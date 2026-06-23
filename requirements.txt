@@ -1,0 +1,5 @@
+# Aligned with backend/core/sandbox/docker/Dockerfile (River). System Chromium via CDP;
+# do not run `playwright install chromium`.
+playwright==1.54.0
+pypdf>=6.0.0
+python-pptx>=1.0.0
