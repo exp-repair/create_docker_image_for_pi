@@ -108,4 +108,39 @@ RUN chmod +x /entrypoint-vnc.sh \
 COPY s6-playwright-vnc /etc/s6-overlay/s6-rc.d/playwright-vnc
 RUN /usr/local/bin/register-s6-services.sh
 
+# --- Pi CLI (baked at build time; requires TEAM_API_KEY via build-arg) ---
+ARG INSTALL_PI=1
+ARG TEAM_API_KEY
+ARG TEAM_BASE_URL=https://claude-code.club/openai/v1
+ARG TEAM_MODEL=gpt-5.5
+ARG PI_SUITE_VERSION=0.1.17
+ARG PI_SUITE=npm:@lebronj/pi-suite
+ARG PI_WORKSPACE_DIR=/workspace
+ARG PI_EVOLUTION_ENABLED=1
+
+USER user
+ENV HOME=/home/user
+ENV PATH="/home/user/.npm-global/bin:/home/user/.bun/bin:${PATH}"
+WORKDIR /workspace
+
+RUN mkdir -p /home/user/.npm-global \
+  && npm config set prefix /home/user/.npm-global
+
+RUN if [ "${INSTALL_PI}" != "1" ]; then \
+      echo "Skipping Pi install (INSTALL_PI=${INSTALL_PI})"; \
+    elif [ -z "${TEAM_API_KEY}" ]; then \
+      echo "TEAM_API_KEY is required when INSTALL_PI=1" >&2; exit 1; \
+    else \
+      export TEAM_API_KEY="${TEAM_API_KEY}" \
+        TEAM_BASE_URL="${TEAM_BASE_URL}" \
+        TEAM_MODEL="${TEAM_MODEL}" \
+        PI_SUITE="${PI_SUITE}" \
+        PI_WORKSPACE_DIR="${PI_WORKSPACE_DIR}" \
+        PI_EVOLUTION_ENABLED="${PI_EVOLUTION_ENABLED}" && \
+      curl -fsSL "https://registry.npmjs.org/@lebronj/pi-suite/-/pi-suite-${PI_SUITE_VERSION}.tgz" \
+        | tar -xzO package/scripts/bootstrap.sh | bash; \
+    fi
+
+USER root
+
 EXPOSE 5901 6080 49983 49999
