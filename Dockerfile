@@ -32,6 +32,7 @@ RUN apt-get update \
     curl \
     chromium \
     xdotool \
+    openbox \
     xvfb \
     x11-utils \
     x11vnc \
@@ -71,6 +72,7 @@ RUN apt-get update \
     antiword \
     catdoc \
     csvkit \
+    fd-find \
     file \
     gawk \
     jq \
@@ -82,6 +84,7 @@ RUN apt-get update \
     unrtf \
     vim \
     xmlstarlet \
+  && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
   && rm -rf /var/lib/apt/lists/*
 
 COPY novnc-index.html /usr/share/novnc/index.html
@@ -117,6 +120,7 @@ ARG PI_SUITE_VERSION=0.1.17
 ARG PI_SUITE=npm:@lebronj/pi-suite
 ARG PI_WORKSPACE_DIR=/workspace
 ARG PI_EVOLUTION_ENABLED=1
+ARG NPM_REGISTRY=
 
 USER user
 ENV HOME=/home/user
@@ -124,21 +128,42 @@ ENV PATH="/home/user/.npm-global/bin:/home/user/.bun/bin:${PATH}"
 WORKDIR /workspace
 
 RUN mkdir -p /home/user/.npm-global \
-  && npm config set prefix /home/user/.npm-global
+  && npm config set prefix /home/user/.npm-global \
+  && npm config set fetch-retries 5 \
+  && npm config set fetch-retry-mintimeout 20000 \
+  && npm config set fetch-retry-maxtimeout 120000 \
+  && npm config set fetch-timeout 300000
 
 RUN if [ "${INSTALL_PI}" != "1" ]; then \
       echo "Skipping Pi install (INSTALL_PI=${INSTALL_PI})"; \
     elif [ -z "${TEAM_API_KEY}" ]; then \
       echo "TEAM_API_KEY is required when INSTALL_PI=1" >&2; exit 1; \
     else \
+      if [ -n "${NPM_REGISTRY}" ]; then \
+        npm config set registry "${NPM_REGISTRY}"; \
+        echo "Using npm registry: ${NPM_REGISTRY}"; \
+      fi; \
       export TEAM_API_KEY="${TEAM_API_KEY}" \
         TEAM_BASE_URL="${TEAM_BASE_URL}" \
         TEAM_MODEL="${TEAM_MODEL}" \
         PI_SUITE="${PI_SUITE}" \
         PI_WORKSPACE_DIR="${PI_WORKSPACE_DIR}" \
-        PI_EVOLUTION_ENABLED="${PI_EVOLUTION_ENABLED}" && \
-      curl -fsSL "https://registry.npmjs.org/@lebronj/pi-suite/-/pi-suite-${PI_SUITE_VERSION}.tgz" \
-        | tar -xzO package/scripts/bootstrap.sh | bash; \
+        PI_EVOLUTION_ENABLED="${PI_EVOLUTION_ENABLED}"; \
+      ok=0; \
+      for attempt in 1 2 3; do \
+        echo "Pi bootstrap attempt ${attempt}/3..."; \
+        if curl -fsSL "https://registry.npmjs.org/@lebronj/pi-suite/-/pi-suite-${PI_SUITE_VERSION}.tgz" \
+          | tar -xzO package/scripts/bootstrap.sh | bash; then \
+          ok=1; \
+          break; \
+        fi; \
+        echo "Pi bootstrap attempt ${attempt} failed, retrying..." >&2; \
+        sleep 15; \
+      done; \
+      if [ "${ok}" != "1" ]; then \
+        echo "Pi bootstrap failed after 3 attempts" >&2; \
+        exit 1; \
+      fi; \
     fi
 
 USER root

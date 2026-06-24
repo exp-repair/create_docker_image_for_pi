@@ -37,6 +37,7 @@ if [[ "${INSTALL_PI}" == "1" ]]; then
     --build-arg "PI_WORKSPACE_DIR=${PI_WORKSPACE_DIR:-/workspace}"
     --build-arg "PI_EVOLUTION_ENABLED=${PI_EVOLUTION_ENABLED:-1}"
   )
+  [[ -n "${NPM_REGISTRY:-}" ]] && EXTRA+=(--build-arg "NPM_REGISTRY=${NPM_REGISTRY}")
   echo "[build.sh] Pi install: enabled (suite ${PI_SUITE_VERSION:-0.1.17})"
 else
   echo "[build.sh] Pi install: skipped (INSTALL_PI=0)"

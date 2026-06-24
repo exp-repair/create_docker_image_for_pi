@@ -49,7 +49,19 @@
       width: 100vw;
       height: 100vh;
     }
-    #screen canvas { display: block; }
+    /* noVNC internal container defaults to overflow:auto → scrollbars */
+    #screen > div {
+      width: 100% !important;
+      height: 100% !important;
+      overflow: hidden !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+    #screen canvas {
+      display: block;
+      margin: auto;
+    }
   </style>
 </head>
 <body>
@@ -116,6 +128,25 @@
       attempt += 1;
     }
 
+    function applyScale() {
+      if (!rfb || resize === 'off') return;
+      if (resize === 'remote') {
+        rfb.resizeSession = true;
+        rfb.scaleViewport = false;
+        return;
+      }
+      const rect = screenEl.getBoundingClientRect();
+      const fbW = rfb._display?.width ?? 0;
+      const fbH = rfb._display?.height ?? 0;
+      if (fbW <= 0 || fbH <= 0 || rect.width <= 0 || rect.height <= 0) {
+        rfb.scaleViewport = true;
+        return;
+      }
+      // Cover the noVNC viewport (fill the black frame; crop edges if needed).
+      rfb.scaleViewport = false;
+      rfb._display.scale = Math.max(rect.width / fbW, rect.height / fbH);
+    }
+
     function connect() {
       backoffTimer = null;
       postState({ state: 'connecting', attempt });
@@ -137,8 +168,12 @@
 
       rfb.addEventListener('connect', () => {
         attempt = 0;
+        applyScale();
+        requestAnimationFrame(applyScale);
         postState({ state: 'connected' });
       });
+      rfb.addEventListener('desktopname', applyScale);
+      rfb.addEventListener('resize', applyScale);
       rfb.addEventListener('disconnect', (event) => {
         const detail = event.detail || {};
         scheduleReconnect(detail.reason || (detail.clean ? 'closed' : 'lost'));
@@ -162,6 +197,10 @@
       if (backoffTimer) { clearTimeout(backoffTimer); backoffTimer = null; }
       attempt = 0;
       connect();
+    });
+
+    window.addEventListener('resize', () => {
+      applyScale();
     });
 
     connect();
