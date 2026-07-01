@@ -13,6 +13,9 @@ BROWSER_START_URL="${BROWSER_START_URL:-https://www.baidu.com}"
 export DISPLAY="${DISPLAY:-:0}"
 
 echo "[entrypoint-vnc] DISPLAY=${DISPLAY} SCREEN=${SCREEN_GEOM} VNC=${VNC_PORT} noVNC=${NOVNC_PORT}"
+if command -v configure-pi-runtime.sh >/dev/null 2>&1; then
+  configure-pi-runtime.sh
+fi
 
 Xvfb "${DISPLAY}" -screen 0 "${SCREEN_GEOM}" -ac +extension RANDR +render -noreset &
 XVFB_PID=$!

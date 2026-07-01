@@ -102,20 +102,19 @@ RUN pip3 install --break-system-packages --no-cache-dir -r /tmp/leagent-requirem
   && rm -f /tmp/leagent-requirements.txt
 
 COPY scripts/entrypoint-vnc.sh /entrypoint-vnc.sh
+COPY scripts/configure-pi-runtime.sh /usr/local/bin/configure-pi-runtime.sh
 COPY scripts/register-s6-services.sh /usr/local/bin/register-s6-services.sh
 COPY scripts/cont-init-browser.sh /etc/cont-init.d/99-browser-vnc
 RUN chmod +x /entrypoint-vnc.sh \
+  /usr/local/bin/configure-pi-runtime.sh \
   /usr/local/bin/register-s6-services.sh \
   /etc/cont-init.d/99-browser-vnc
 
 COPY s6-playwright-vnc /etc/s6-overlay/s6-rc.d/playwright-vnc
 RUN /usr/local/bin/register-s6-services.sh
 
-# --- Pi CLI (baked at build time; requires TEAM_API_KEY via build-arg) ---
+# --- Pi CLI (baked at build time; provider credentials are injected at runtime) ---
 ARG INSTALL_PI=1
-ARG TEAM_API_KEY
-ARG TEAM_BASE_URL=https://claude-code.club/openai/v1
-ARG TEAM_MODEL=gpt-5.5
 ARG PI_SUITE_VERSION=0.1.17
 ARG PI_SUITE=npm:@lebronj/pi-suite
 ARG PI_WORKSPACE_DIR=/workspace
@@ -136,33 +135,28 @@ RUN mkdir -p /home/user/.npm-global \
 
 RUN if [ "${INSTALL_PI}" != "1" ]; then \
       echo "Skipping Pi install (INSTALL_PI=${INSTALL_PI})"; \
-    elif [ -z "${TEAM_API_KEY}" ]; then \
-      echo "TEAM_API_KEY is required when INSTALL_PI=1" >&2; exit 1; \
     else \
       if [ -n "${NPM_REGISTRY}" ]; then \
         npm config set registry "${NPM_REGISTRY}"; \
         echo "Using npm registry: ${NPM_REGISTRY}"; \
       fi; \
-      export TEAM_API_KEY="${TEAM_API_KEY}" \
-        TEAM_BASE_URL="${TEAM_BASE_URL}" \
-        TEAM_MODEL="${TEAM_MODEL}" \
-        PI_SUITE="${PI_SUITE}" \
-        PI_WORKSPACE_DIR="${PI_WORKSPACE_DIR}" \
-        PI_EVOLUTION_ENABLED="${PI_EVOLUTION_ENABLED}"; \
-      ok=0; \
-      for attempt in 1 2 3; do \
-        echo "Pi bootstrap attempt ${attempt}/3..."; \
-        if curl -fsSL "https://registry.npmjs.org/@lebronj/pi-suite/-/pi-suite-${PI_SUITE_VERSION}.tgz" \
-          | tar -xzO package/scripts/bootstrap.sh | bash; then \
-          ok=1; \
-          break; \
+      npm install -g --ignore-scripts @earendil-works/pi-coding-agent; \
+      mkdir -p "${HOME}/.pi/agent"; \
+      PI_SUITE_SOURCE="${PI_SUITE}"; \
+      if [ "${PI_SUITE}" = "npm:@lebronj/pi-suite" ] && [ -n "${PI_SUITE_VERSION}" ]; then \
+        PI_SUITE_SOURCE="npm:@lebronj/pi-suite@${PI_SUITE_VERSION}"; \
+      fi; \
+      pi install "${PI_SUITE_SOURCE}"; \
+      if command -v bun >/dev/null 2>&1; then \
+        bun install -g https://github.com/tobi/qmd; \
+        export PATH="${HOME}/.bun/bin:${PATH}"; \
+        mkdir -p "${HOME}/.pi/agent/memory"; \
+        if command -v qmd >/dev/null 2>&1; then \
+          qmd collection add "${HOME}/.pi/agent/memory" --name pi-memory || true; \
+          qmd embed || true; \
         fi; \
-        echo "Pi bootstrap attempt ${attempt} failed, retrying..." >&2; \
-        sleep 15; \
-      done; \
-      if [ "${ok}" != "1" ]; then \
-        echo "Pi bootstrap failed after 3 attempts" >&2; \
-        exit 1; \
+      else \
+        echo "Bun not found. Core memory tools still work, but memory_search needs qmd."; \
       fi; \
     fi
 

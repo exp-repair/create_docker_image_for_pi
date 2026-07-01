@@ -4,6 +4,15 @@ cd "$(dirname "$0")/.."
 
 IMAGE="${IMAGE:-cube-leagent-template:local}"
 NAME="${NAME:-cube-leagent}"
+PI_CONFIG="${PI_CONFIG:-config/pi.env}"
+
+if [[ -f "${PI_CONFIG}" ]]; then
+  # shellcheck disable=SC1090
+  set -a
+  source "${PI_CONFIG}"
+  set +a
+  echo "[run.sh] loaded runtime Pi config from ${PI_CONFIG}"
+fi
 
 OLD_IDS=$(sudo docker ps -aq --filter "ancestor=${IMAGE}" 2>/dev/null || true)
 if [[ -n "${OLD_IDS}" ]]; then
@@ -21,6 +30,9 @@ sudo docker run -d --name "${NAME}" \
   -e VNC_PORT="${VNC_PORT:-5901}" \
   -e NOVNC_PORT="${NOVNC_PORT:-6080}" \
   ${VNC_PASSWORD:+-e VNC_PASSWORD="${VNC_PASSWORD}"} \
+  ${TEAM_API_KEY:+-e TEAM_API_KEY="${TEAM_API_KEY}"} \
+  -e TEAM_BASE_URL="${TEAM_BASE_URL:-https://claude-code.club/openai/v1}" \
+  -e TEAM_MODEL="${TEAM_MODEL:-gpt-5.5}" \
   --shm-size=2g \
   "${IMAGE}" "$@"
 

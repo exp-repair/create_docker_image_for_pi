@@ -4,14 +4,13 @@ services:
       context: .
       args:
         INSTALL_PI: ${INSTALL_PI:-1}
-        TEAM_API_KEY: ${TEAM_API_KEY:-}
-        TEAM_BASE_URL: ${TEAM_BASE_URL:-https://claude-code.club/openai/v1}
-        TEAM_MODEL: ${TEAM_MODEL:-gpt-5.5}
         PI_SUITE_VERSION: ${PI_SUITE_VERSION:-0.1.17}
         PI_SUITE: ${PI_SUITE:-npm:@lebronj/pi-suite}
         PI_WORKSPACE_DIR: ${PI_WORKSPACE_DIR:-/workspace}
         PI_EVOLUTION_ENABLED: ${PI_EVOLUTION_ENABLED:-1}
     image: cube-leagent-template:local
+    env_file:
+      - ./config/pi.env
     ports:
       - "${NOVNC_HOST_PORT:-6080}:6080"
       - "${VNC_HOST_PORT:-5901}:5901"

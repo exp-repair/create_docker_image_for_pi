@@ -28,11 +28,22 @@ cd backend/core/sandbox/cube/docker_container
 # optional: SANDBOX_IMAGE=... NOVNC_ARCHIVE_URL=... ./scripts/build.sh
 ```
 
+Pi CLI is installed during image build, but `TEAM_API_KEY`, `TEAM_BASE_URL`, and
+`TEAM_MODEL` are not baked into the image. Pass them when the container starts.
+
 ## Run locally (smoke test)
 
 ```bash
+cp config/pi.env.example config/pi.env
+# edit config/pi.env and fill TEAM_API_KEY / TEAM_BASE_URL / TEAM_MODEL
 ./scripts/run.sh
 ./scripts/diagnose.sh
+```
+
+You can also pass runtime values directly:
+
+```bash
+TEAM_API_KEY=... TEAM_BASE_URL=https://... TEAM_MODEL=gpt-5.5 ./scripts/run.sh
 ```
 
 Inside the container:
