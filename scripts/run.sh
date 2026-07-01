@@ -33,6 +33,12 @@ sudo docker run -d --name "${NAME}" \
   ${TEAM_API_KEY:+-e TEAM_API_KEY="${TEAM_API_KEY}"} \
   -e TEAM_BASE_URL="${TEAM_BASE_URL:-https://claude-code.club/openai/v1}" \
   -e TEAM_MODEL="${TEAM_MODEL:-gpt-5.5}" \
+  ${MULTICA_SERVER_URL:+-e MULTICA_SERVER_URL="${MULTICA_SERVER_URL}"} \
+  ${MULTICA_APP_URL:+-e MULTICA_APP_URL="${MULTICA_APP_URL}"} \
+  ${MULTICA_WORKSPACE_ID:+-e MULTICA_WORKSPACE_ID="${MULTICA_WORKSPACE_ID}"} \
+  ${MULTICA_TOKEN:+-e MULTICA_TOKEN="${MULTICA_TOKEN}"} \
+  ${MULTICA_PROFILE:+-e MULTICA_PROFILE="${MULTICA_PROFILE}"} \
+  -e MULTICA_DAEMON_ENABLED="${MULTICA_DAEMON_ENABLED:-1}" \
   --shm-size=2g \
   "${IMAGE}" "$@"
 
@@ -44,6 +50,15 @@ if sudo docker exec "${NAME}" test -x /etc/cont-init.d/99-browser-vnc 2>/dev/nul
 fi
 
 sleep 2
+
+echo "[run.sh] ensuring Multica daemon ..."
+if sudo docker exec "${NAME}" test -x /entrypoint-multica-daemon.sh 2>/dev/null \
+  && sudo docker exec "${NAME}" sh -lc 'test -n "$MULTICA_SERVER_URL" && test -n "$MULTICA_APP_URL" && test -n "$MULTICA_WORKSPACE_ID" && test -n "$MULTICA_TOKEN"' 2>/dev/null; then
+  if ! sudo docker exec "${NAME}" pgrep -f "multica.*daemon start --foreground" >/dev/null 2>&1; then
+    sudo docker exec -d -u user "${NAME}" /entrypoint-multica-daemon.sh || true
+  fi
+fi
+
 HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
 echo ""
 echo "=========================================="

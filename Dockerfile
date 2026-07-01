@@ -102,16 +102,25 @@ RUN pip3 install --break-system-packages --no-cache-dir -r /tmp/leagent-requirem
   && rm -f /tmp/leagent-requirements.txt
 
 COPY scripts/entrypoint-vnc.sh /entrypoint-vnc.sh
+COPY scripts/entrypoint-multica-daemon.sh /entrypoint-multica-daemon.sh
 COPY scripts/configure-pi-runtime.sh /usr/local/bin/configure-pi-runtime.sh
+COPY scripts/configure-multica-runtime.sh /usr/local/bin/configure-multica-runtime.sh
 COPY scripts/register-s6-services.sh /usr/local/bin/register-s6-services.sh
 COPY scripts/cont-init-browser.sh /etc/cont-init.d/99-browser-vnc
 RUN chmod +x /entrypoint-vnc.sh \
+  /entrypoint-multica-daemon.sh \
   /usr/local/bin/configure-pi-runtime.sh \
+  /usr/local/bin/configure-multica-runtime.sh \
   /usr/local/bin/register-s6-services.sh \
   /etc/cont-init.d/99-browser-vnc
 
 COPY s6-playwright-vnc /etc/s6-overlay/s6-rc.d/playwright-vnc
+COPY s6-multica-daemon /etc/s6-overlay/s6-rc.d/multica-daemon
 RUN /usr/local/bin/register-s6-services.sh
+
+# --- Multica daemon binary (built from local checkout) ---
+COPY --chown=user:user multica/server/bin/multica /usr/local/bin/multica
+RUN chmod +x /usr/local/bin/multica
 
 # --- Pi CLI (baked at build time; provider credentials are injected at runtime) ---
 ARG INSTALL_PI=1

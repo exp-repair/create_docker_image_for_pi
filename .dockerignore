@@ -5,3 +5,7 @@ npm-debug.log
 *.md
 Dockerfile_*
 *.bak
+multica/**
+!multica/server/
+!multica/server/bin/
+!multica/server/bin/multica

@@ -10,7 +10,8 @@ services:
         PI_EVOLUTION_ENABLED: ${PI_EVOLUTION_ENABLED:-1}
     image: cube-leagent-template:local
     env_file:
-      - ./config/pi.env
+      - path: ./config/pi.env
+        required: false
     ports:
       - "${NOVNC_HOST_PORT:-6080}:6080"
       - "${VNC_HOST_PORT:-5901}:5901"

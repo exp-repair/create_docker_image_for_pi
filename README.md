@@ -31,11 +31,15 @@ cd backend/core/sandbox/cube/docker_container
 Pi CLI is installed during image build, but `TEAM_API_KEY`, `TEAM_BASE_URL`, and
 `TEAM_MODEL` are not baked into the image. Pass them when the container starts.
 
+The image also includes the Multica CLI/daemon binary built from the local
+`/home/jian40/multica` checkout. `./scripts/build.sh` rebuilds it from that
+checkout before `docker build` and warns if the checkout is not on `dev`.
+
 ## Run locally (smoke test)
 
 ```bash
 cp config/pi.env.example config/pi.env
-# edit config/pi.env and fill TEAM_API_KEY / TEAM_BASE_URL / TEAM_MODEL
+# edit config/pi.env and fill TEAM_* plus MULTICA_* runtime values
 ./scripts/run.sh
 ./scripts/diagnose.sh
 ```
@@ -43,7 +47,11 @@ cp config/pi.env.example config/pi.env
 You can also pass runtime values directly:
 
 ```bash
-TEAM_API_KEY=... TEAM_BASE_URL=https://... TEAM_MODEL=gpt-5.5 ./scripts/run.sh
+TEAM_API_KEY=... TEAM_BASE_URL=https://... TEAM_MODEL=gpt-5.5 \
+MULTICA_SERVER_URL=http://10.110.158.143:8081 \
+MULTICA_APP_URL=http://10.110.158.143:3001 \
+MULTICA_WORKSPACE_ID=... MULTICA_TOKEN=... \
+./scripts/run.sh
 ```
 
 Inside the container:
