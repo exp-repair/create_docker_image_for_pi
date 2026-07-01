@@ -105,12 +105,14 @@ COPY scripts/entrypoint-vnc.sh /entrypoint-vnc.sh
 COPY scripts/entrypoint-multica-daemon.sh /entrypoint-multica-daemon.sh
 COPY scripts/configure-pi-runtime.sh /usr/local/bin/configure-pi-runtime.sh
 COPY scripts/configure-multica-runtime.sh /usr/local/bin/configure-multica-runtime.sh
+COPY scripts/start-multica-runtime.sh /usr/local/bin/start-multica-runtime.sh
 COPY scripts/register-s6-services.sh /usr/local/bin/register-s6-services.sh
 COPY scripts/cont-init-browser.sh /etc/cont-init.d/99-browser-vnc
 RUN chmod +x /entrypoint-vnc.sh \
   /entrypoint-multica-daemon.sh \
   /usr/local/bin/configure-pi-runtime.sh \
   /usr/local/bin/configure-multica-runtime.sh \
+  /usr/local/bin/start-multica-runtime.sh \
   /usr/local/bin/register-s6-services.sh \
   /etc/cont-init.d/99-browser-vnc
 
