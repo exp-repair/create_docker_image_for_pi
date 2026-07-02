@@ -103,6 +103,7 @@ RUN pip3 install --break-system-packages --no-cache-dir -r /tmp/leagent-requirem
 
 COPY scripts/entrypoint-vnc.sh /entrypoint-vnc.sh
 COPY scripts/entrypoint-multica-daemon.sh /entrypoint-multica-daemon.sh
+COPY scripts/cube-start.sh /usr/local/bin/cube-start.sh
 COPY scripts/configure-pi-runtime.sh /usr/local/bin/configure-pi-runtime.sh
 COPY scripts/configure-multica-runtime.sh /usr/local/bin/configure-multica-runtime.sh
 COPY scripts/start-multica-runtime.sh /usr/local/bin/start-multica-runtime.sh
@@ -110,6 +111,7 @@ COPY scripts/register-s6-services.sh /usr/local/bin/register-s6-services.sh
 COPY scripts/cont-init-browser.sh /etc/cont-init.d/99-browser-vnc
 RUN chmod +x /entrypoint-vnc.sh \
   /entrypoint-multica-daemon.sh \
+  /usr/local/bin/cube-start.sh \
   /usr/local/bin/configure-pi-runtime.sh \
   /usr/local/bin/configure-multica-runtime.sh \
   /usr/local/bin/start-multica-runtime.sh \
@@ -172,5 +174,12 @@ RUN if [ "${INSTALL_PI}" != "1" ]; then \
     fi
 
 USER root
+
+RUN ln -sf /home/user/.npm-global/bin/pi /usr/local/bin/pi \
+  && ln -sf /home/user/.npm-global/bin/pi-mcp-adapter /usr/local/bin/pi-mcp-adapter || true
+
+ENV PATH="/home/user/.npm-global/bin:/home/user/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
+WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/cube-start.sh"]
 
 EXPOSE 5901 6080 49983 49999
