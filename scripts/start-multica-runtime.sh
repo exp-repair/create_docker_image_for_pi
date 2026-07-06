@@ -15,6 +15,10 @@ if [[ "$(id -u)" == "0" && -n "${RUN_AS_USER:-1}" ]] && id "${MULTICA_USER}" >/d
     TEAM_API_KEY="${TEAM_API_KEY:-}" \
     TEAM_BASE_URL="${TEAM_BASE_URL:-}" \
     TEAM_MODEL="${TEAM_MODEL:-}" \
+    BRIDGE_USER_ID="${BRIDGE_USER_ID:-}" \
+    AREAL_BASE_URL="${AREAL_BASE_URL:-}" \
+    AREAL_API="${AREAL_API:-}" \
+    AREAL_API_KEY="${AREAL_API_KEY:-}" \
     MULTICA_SERVER_URL="${MULTICA_SERVER_URL:-}" \
     MULTICA_APP_URL="${MULTICA_APP_URL:-}" \
     MULTICA_WORKSPACE_ID="${MULTICA_WORKSPACE_ID:-}" \
@@ -27,7 +31,7 @@ fi
 
 mkdir -p "${MULTICA_HOME}/.multica"
 
-if [[ -n "${TEAM_API_KEY:-}" || -n "${TEAM_BASE_URL:-}" || -n "${TEAM_MODEL:-}" ]]; then
+if [[ -n "${TEAM_API_KEY:-}" || -n "${TEAM_BASE_URL:-}" || -n "${TEAM_MODEL:-}" || -n "${BRIDGE_USER_ID:-}" ]]; then
   configure-pi-runtime.sh
 else
   log "TEAM_* not provided; leaving Pi config unchanged"

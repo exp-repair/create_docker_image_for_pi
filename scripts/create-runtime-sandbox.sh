@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 CUBE_API_URL="${CUBE_API_URL:-http://127.0.0.1:3000}"
 CUBE_PROXY_HTTP="${CUBE_PROXY_HTTP:-http://127.0.0.1}"
-CUBE_TEMPLATE_ID="${CUBE_TEMPLATE_ID:-tpl-df88fabae8134bb7b937a442}"
+CUBE_TEMPLATE_ID="${CUBE_TEMPLATE_ID:-tpl-8fb171417c584db8bd5e0a86}"
 CUBE_SANDBOX_TIMEOUT="${CUBE_SANDBOX_TIMEOUT:-3600}"
 PI_CONFIG="${PI_CONFIG:-config/pi.env}"
 
@@ -66,8 +66,9 @@ runtime_env = {
     "MULTICA_TOKEN": os.environ["MULTICA_TOKEN"],
     "MULTICA_DAEMON_ENABLED": os.environ.get("MULTICA_DAEMON_ENABLED", "1"),
 }
-if os.environ.get("MULTICA_PROFILE"):
-    runtime_env["MULTICA_PROFILE"] = os.environ["MULTICA_PROFILE"]
+for optional_key in ("BRIDGE_USER_ID", "AREAL_BASE_URL", "AREAL_API", "AREAL_API_KEY", "MULTICA_PROFILE"):
+    if os.environ.get(optional_key):
+        runtime_env[optional_key] = os.environ[optional_key]
 code = """
 import json, os, subprocess
 runtime_env = json.loads(%r)

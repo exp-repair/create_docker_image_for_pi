@@ -11,9 +11,16 @@ MODELS_FILE="${AGENT_DIR}/models.json"
 SETTINGS_FILE="${AGENT_DIR}/settings.json"
 TEAM_BASE_URL="${TEAM_BASE_URL:-https://claude-code.club/openai/v1}"
 TEAM_MODEL="${TEAM_MODEL:-gpt-5.5}"
+AREAL_BASE_URL="${AREAL_BASE_URL:-http://db_bridge_stub:9100/v1}"
+AREAL_API="${AREAL_API:-openai-completions}"
+AREAL_API_KEY="${AREAL_API_KEY:-bridge}"
+BRIDGE_USER_ID="${BRIDGE_USER_ID:-}"
 
 if [[ -z "${TEAM_API_KEY:-}" ]]; then
   log "WARN: TEAM_API_KEY is empty; Pi may still need an API key"
+fi
+if [[ -z "${BRIDGE_USER_ID}" ]]; then
+  log "WARN: BRIDGE_USER_ID is empty; areal.headers.X-Bridge-User-Id will be blank"
 fi
 
 mkdir -p "${AGENT_DIR}"
@@ -24,6 +31,10 @@ if command -v node >/dev/null 2>&1; then
   TEAM_API_KEY="${TEAM_API_KEY:-}" \
   TEAM_BASE_URL="${TEAM_BASE_URL}" \
   TEAM_MODEL="${TEAM_MODEL}" \
+  BRIDGE_USER_ID="${BRIDGE_USER_ID}" \
+  AREAL_BASE_URL="${AREAL_BASE_URL}" \
+  AREAL_API="${AREAL_API}" \
+  AREAL_API_KEY="${AREAL_API_KEY}" \
   node <<'NODE'
 const fs = require("node:fs");
 
@@ -33,6 +44,25 @@ function readJson(path) {
   } catch {
     return {};
   }
+}
+
+function buildAreal() {
+  return {
+    baseUrl: process.env.AREAL_BASE_URL || "http://db_bridge_stub:9100/v1",
+    api: process.env.AREAL_API || "openai-completions",
+    apiKey: process.env.AREAL_API_KEY || "bridge",
+    headers: {
+      "X-Bridge-User-Id": process.env.BRIDGE_USER_ID || "",
+    },
+    compat: {
+      supportsDeveloperRole: false,
+      supportsReasoningEffort: false,
+    },
+    models: [
+      { id: "areal-distill" },
+      { id: "areal-default" },
+    ],
+  };
 }
 
 const modelsPath = process.env.PI_MODELS_FILE;
@@ -50,7 +80,9 @@ if (apiKey) {
 } else {
   delete providers.openai.apiKey;
 }
-fs.writeFileSync(modelsPath, `${JSON.stringify({ ...models, providers }, null, 2)}\n`);
+
+const next = { ...models, providers, areal: buildAreal() };
+fs.writeFileSync(modelsPath, `${JSON.stringify(next, null, 2)}\n`);
 
 const settings = readJson(settingsPath);
 fs.writeFileSync(settingsPath, `${JSON.stringify({
@@ -66,6 +98,10 @@ elif command -v python3 >/dev/null 2>&1; then
   TEAM_API_KEY="${TEAM_API_KEY:-}" \
   TEAM_BASE_URL="${TEAM_BASE_URL}" \
   TEAM_MODEL="${TEAM_MODEL}" \
+  BRIDGE_USER_ID="${BRIDGE_USER_ID}" \
+  AREAL_BASE_URL="${AREAL_BASE_URL}" \
+  AREAL_API="${AREAL_API}" \
+  AREAL_API_KEY="${AREAL_API_KEY}" \
   python3 <<'PY'
 import json
 import os
@@ -77,6 +113,25 @@ def read_json(path: Path):
         return json.loads(path.read_text()) if path.exists() else {}
     except Exception:
         return {}
+
+
+def build_areal():
+    return {
+        "baseUrl": os.environ.get("AREAL_BASE_URL", "http://db_bridge_stub:9100/v1"),
+        "api": os.environ.get("AREAL_API", "openai-completions"),
+        "apiKey": os.environ.get("AREAL_API_KEY", "bridge"),
+        "headers": {
+            "X-Bridge-User-Id": os.environ.get("BRIDGE_USER_ID", ""),
+        },
+        "compat": {
+            "supportsDeveloperRole": False,
+            "supportsReasoningEffort": False,
+        },
+        "models": [
+            {"id": "areal-distill"},
+            {"id": "areal-default"},
+        ],
+    }
 
 models_path = Path(os.environ["PI_MODELS_FILE"])
 settings_path = Path(os.environ["PI_SETTINGS_FILE"])
@@ -94,6 +149,7 @@ else:
     openai.pop("apiKey", None)
 providers["openai"] = openai
 models["providers"] = providers
+models["areal"] = build_areal()
 models_path.write_text(json.dumps(models, indent=2) + "\n")
 
 settings = read_json(settings_path)
@@ -110,4 +166,4 @@ if [[ "$(id -u)" == "0" ]] && id "${PI_USER}" >/dev/null 2>&1; then
   chown -R "${PI_USER}:${PI_USER}" "${AGENT_DIR}"
 fi
 
-log "configured provider=openai baseUrl=${TEAM_BASE_URL} model=${TEAM_MODEL}"
+log "configured provider=openai baseUrl=${TEAM_BASE_URL} model=${TEAM_MODEL} areal.baseUrl=${AREAL_BASE_URL} bridgeUserId=${BRIDGE_USER_ID:-<empty>}"
