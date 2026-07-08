@@ -3,6 +3,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+if [[ -f .cube-template.env ]]; then
+  # shellcheck disable=SC1091
+  source .cube-template.env
+fi
+
 CUBE_API_URL="${CUBE_API_URL:-http://127.0.0.1:3000}"
 CUBE_PROXY_HTTP="${CUBE_PROXY_HTTP:-http://127.0.0.1}"
 CUBE_TEMPLATE_ID="${CUBE_TEMPLATE_ID:-tpl-8fb171417c584db8bd5e0a86}"

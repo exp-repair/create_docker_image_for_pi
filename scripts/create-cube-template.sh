@@ -13,9 +13,12 @@ PROBE_PATH="${PROBE_PATH:-/health}"
 WATCH_TEMPLATE="${WATCH_TEMPLATE:-1}"
 OUTPUT_ENV_FILE="${OUTPUT_ENV_FILE:-.cube-template.env}"
 
-# Space- or comma-separated CIDRs to allow at template network level, e.g.:
-#   ALLOW_OUT_CIDRS="10.110.158.143/32 1.2.3.4/32" scripts/create-cube-template.sh
-ALLOW_OUT_CIDRS="${ALLOW_OUT_CIDRS:-}"
+# Space- or comma-separated CIDRs to allow at template network level.
+# Default: cube-dev gateway (192.168.0.1) + primary host IP.
+# Override: ALLOW_OUT_CIDRS="192.168.0.1/32 10.110.158.143/32" scripts/create-cube-template.sh
+HOST_IP="${HOST_IP:-$(hostname -I 2>/dev/null | awk '{print $1}')}"
+CUBE_DEV_GATEWAY="${CUBE_DEV_GATEWAY:-192.168.0.1}"
+ALLOW_OUT_CIDRS="${ALLOW_OUT_CIDRS:-${CUBE_DEV_GATEWAY}/32 ${HOST_IP}/32}"
 
 log() { echo "[create-cube-template] $*"; }
 die() { echo "[create-cube-template] ERROR: $*" >&2; exit 1; }
@@ -45,6 +48,9 @@ if [[ -n "${ALLOW_OUT_CIDRS}" ]]; then
   for cidr in ${normalized_cidrs}; do
     [[ -n "${cidr}" ]] && allow_args+=(--allow-out-cidr "${cidr}")
   done
+  log "egress allow-out-cidr: ${ALLOW_OUT_CIDRS}"
+else
+  log "WARN: ALLOW_OUT_CIDRS is empty; sandboxes cannot reach host services by IP"
 fi
 
 create_args=(
@@ -96,6 +102,7 @@ cat > "${OUTPUT_ENV_FILE}" <<EOF
 CUBE_TEMPLATE_ID=${CUBE_TEMPLATE_ID}
 CUBE_TEMPLATE_JOB_ID=${CUBE_TEMPLATE_JOB_ID}
 SOURCE_IMAGE=${SOURCE_IMAGE}
+ALLOW_OUT_CIDRS=${ALLOW_OUT_CIDRS}
 EOF
 
 log "wrote ${OUTPUT_ENV_FILE}"
