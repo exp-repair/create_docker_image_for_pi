@@ -23,12 +23,16 @@ sudo docker rm -f "${NAME}" >/dev/null 2>&1 || true
 
 echo "[run.sh] starting ${NAME} ..."
 sudo docker run -d --name "${NAME}" \
+  -p ${PI_WEB_HOST_PORT:-6079}:6079 \
   -p 6080:6080 -p 5901:5901 \
   -p 49983:49983 -p 49999:49999 \
   -e DISPLAY=":0" \
   -e SCREEN_GEOM="${SCREEN_GEOM:-1920x1080x24}" \
   -e VNC_PORT="${VNC_PORT:-5901}" \
   -e NOVNC_PORT="${NOVNC_PORT:-6080}" \
+  -e PI_WEB_HOST="0.0.0.0" \
+  -e PI_WEB_PORT="6079" \
+  -e PI_WEB_WORKSPACE="${PI_WORKSPACE_DIR:-/workspace}" \
   ${VNC_PASSWORD:+-e VNC_PASSWORD="${VNC_PASSWORD}"} \
   ${TEAM_API_KEY:+-e TEAM_API_KEY="${TEAM_API_KEY}"} \
   -e TEAM_BASE_URL="${TEAM_BASE_URL:-https://claude-code.club/openai/v1}" \
@@ -66,6 +70,7 @@ fi
 HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
 echo ""
 echo "=========================================="
+echo "  Pi Web: http://${HOST_IP}:${PI_WEB_HOST_PORT:-6079}/"
 echo "  noVNC:  http://${HOST_IP}:6080/"
 echo "  VNC:    ${HOST_IP}:5901"
 echo "  logs:   sudo docker logs -f ${NAME}"

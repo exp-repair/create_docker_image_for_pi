@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pi Web Console</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <aside class="sidebar" aria-label="会话列表">
+      <div class="brand">
+        <div class="sigil">π</div>
+        <div>
+          <p class="eyebrow">Sandbox bridge</p>
+          <h1>Pi Web Console</h1>
+        </div>
+      </div>
+      <button id="newSession" class="primary-action" type="button">新建会话</button>
+      <div class="search-wrap">
+        <input id="sessionSearch" type="search" placeholder="搜索历史会话">
+      </div>
+      <div id="sessions" class="sessions" role="list"></div>
+    </aside>
+
+    <section class="stage" aria-label="Pi 对话窗口">
+      <header class="topbar">
+        <div>
+          <p id="status" class="eyebrow">连接中</p>
+          <h2 id="sessionTitle">当前会话</h2>
+        </div>
+        <div class="toolbar">
+          <button id="openSettings" type="button">模型配置</button>
+          <button id="renameSession" type="button">命名</button>
+          <button id="abort" type="button">中止</button>
+        </div>
+      </header>
+
+      <div id="messages" class="messages" aria-live="polite"></div>
+
+      <form id="composer" class="composer">
+        <textarea id="prompt" rows="3" placeholder="输入要交给 Pi 的任务。Shift+Enter 换行，Enter 发送。"></textarea>
+        <button type="submit">发送</button>
+      </form>
+    </section>
+  </main>
+
+  <dialog id="settingsDialog" class="settings-dialog">
+    <form id="modelConfigForm" class="settings-card">
+      <div class="settings-head">
+        <div>
+          <p class="eyebrow">Runtime model wiring</p>
+          <h3>大模型配置</h3>
+        </div>
+        <button id="closeSettings" class="ghost" type="button">关闭</button>
+      </div>
+
+      <label>默认 provider
+        <input id="defaultProvider" name="defaultProvider" placeholder="openai">
+      </label>
+      <label>默认模型
+        <input id="defaultModel" name="defaultModel" placeholder="gpt-5.5">
+      </label>
+      <label>OpenAI 兼容地址
+        <input id="openaiBaseUrl" name="openaiBaseUrl" placeholder="https://example.com/openai/v1">
+      </label>
+      <label>OpenAI 兼容 Key
+        <input id="openaiApiKey" name="openaiApiKey" type="password" autocomplete="new-password" placeholder="留空则保持不变">
+        <span id="openaiKeyHint" class="hint"></span>
+      </label>
+      <label class="checkline">
+        <input id="clearOpenaiApiKey" name="clearOpenaiApiKey" type="checkbox">
+        清空 OpenAI Key
+      </label>
+
+      <div class="split-title">Areal bridge</div>
+      <label>Areal 地址
+        <input id="arealBaseUrl" name="arealBaseUrl" placeholder="http://10.110.158.143:9100/v1">
+      </label>
+      <label>Areal API 类型
+        <input id="arealApi" name="arealApi" placeholder="openai-completions">
+      </label>
+      <label>Areal Key
+        <input id="arealApiKey" name="arealApiKey" type="password" autocomplete="new-password" placeholder="留空则保持不变">
+        <span id="arealKeyHint" class="hint"></span>
+      </label>
+      <label>Bridge User ID
+        <input id="bridgeUserId" name="bridgeUserId" placeholder="X-Bridge-User-Id">
+      </label>
+      <label class="checkline">
+        <input id="clearArealApiKey" name="clearArealApiKey" type="checkbox">
+        清空 Areal Key
+      </label>
+
+      <p class="hint">保存后会重启 Pi RPC，使新 Key / 地址 / 模型立即生效；当前会话文件会自动恢复。</p>
+      <div class="settings-actions">
+        <button class="ghost" type="button" id="reloadConfig">重新读取</button>
+        <button class="primary-action" type="submit">保存并重启 Pi</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>

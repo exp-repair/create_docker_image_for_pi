@@ -17,14 +17,14 @@ echo "=== port mappings ==="
 sudo docker port "${CID}"
 
 echo ""
-echo "=== processes (Xvfb / vnc / websockify) ==="
+echo "=== processes (Xvfb / vnc / websockify / pi-web) ==="
 sudo docker exec "${CID}" sh -c \
-  'ps aux | grep -E "Xvfb|x11vnc|websockify|entrypoint-vnc" | grep -v grep || echo "(none)"'
+  'ps aux | grep -E "Xvfb|x11vnc|websockify|entrypoint-vnc|pi-web|server.js" | grep -v grep || echo "(none)"'
 
 echo ""
 echo "=== listening ports ==="
 sudo docker exec "${CID}" sh -c \
-  'ss -tlnp 2>/dev/null | grep -E "5901|6080|9223|49983|49999" || netstat -tlnp 2>/dev/null | grep -E "5901|6080|9223|49983|49999" || true'
+  'ss -tlnp 2>/dev/null | grep -E "5901|6079|6080|9223|49983|49999" || netstat -tlnp 2>/dev/null | grep -E "5901|6079|6080|9223|49983|49999" || true'
 
 echo ""
 echo "=== Leagent paths ==="
@@ -39,5 +39,6 @@ sudo docker exec "${CID}" sh -c \
 
 echo ""
 echo "=== host curl ==="
+curl -sS -o /dev/null -w "6079/ => %{http_code}\n" --connect-timeout 3 http://127.0.0.1:${PI_WEB_HOST_PORT:-6079}/ || true
 curl -sS -o /dev/null -w "6080/ => %{http_code}\n" --connect-timeout 3 http://127.0.0.1:6080/ || true
 curl -sS -o /dev/null -w "49999/ => %{http_code}\n" --connect-timeout 3 http://127.0.0.1:49999/ || true

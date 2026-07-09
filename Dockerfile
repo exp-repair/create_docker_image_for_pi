@@ -103,6 +103,7 @@ RUN pip3 install --break-system-packages --no-cache-dir -r /tmp/leagent-requirem
 
 COPY scripts/entrypoint-vnc.sh /entrypoint-vnc.sh
 COPY scripts/entrypoint-multica-daemon.sh /entrypoint-multica-daemon.sh
+COPY scripts/entrypoint-pi-web.sh /entrypoint-pi-web.sh
 COPY scripts/cube-start.sh /usr/local/bin/cube-start.sh
 COPY scripts/configure-pi-runtime.sh /usr/local/bin/configure-pi-runtime.sh
 COPY scripts/configure-multica-runtime.sh /usr/local/bin/configure-multica-runtime.sh
@@ -111,6 +112,7 @@ COPY scripts/register-s6-services.sh /usr/local/bin/register-s6-services.sh
 COPY scripts/cont-init-browser.sh /etc/cont-init.d/99-browser-vnc
 RUN chmod +x /entrypoint-vnc.sh \
   /entrypoint-multica-daemon.sh \
+  /entrypoint-pi-web.sh \
   /usr/local/bin/cube-start.sh \
   /usr/local/bin/configure-pi-runtime.sh \
   /usr/local/bin/configure-multica-runtime.sh \
@@ -120,6 +122,7 @@ RUN chmod +x /entrypoint-vnc.sh \
 
 COPY s6-playwright-vnc /etc/s6-overlay/s6-rc.d/playwright-vnc
 COPY s6-multica-daemon /etc/s6-overlay/s6-rc.d/multica-daemon
+COPY s6-pi-web /etc/s6-overlay/s6-rc.d/pi-web
 RUN /usr/local/bin/register-s6-services.sh
 
 # --- Multica daemon binary (built from local checkout) ---
@@ -178,8 +181,10 @@ USER root
 RUN ln -sf /home/user/.npm-global/bin/pi /usr/local/bin/pi \
   && ln -sf /home/user/.npm-global/bin/pi-mcp-adapter /usr/local/bin/pi-mcp-adapter || true
 
+COPY --chown=user:user pi-web /opt/pi-web
+
 ENV PATH="/home/user/.npm-global/bin:/home/user/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/cube-start.sh"]
 
-EXPOSE 5901 6080 49983 49999
+EXPOSE 5901 6079 6080 49983 49999

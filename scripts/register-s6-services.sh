@@ -2,7 +2,7 @@
 # Register the VNC longrun service into sandbox-code s6-rc user bundle.
 set -euo pipefail
 
-SERVICES=(playwright-vnc multica-daemon)
+SERVICES=(playwright-vnc multica-daemon pi-web)
 S6_RC=/etc/s6-overlay/s6-rc.d
 
 mkdir -p "${S6_RC}/user/contents.d"

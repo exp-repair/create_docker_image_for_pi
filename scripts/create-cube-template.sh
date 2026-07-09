@@ -36,7 +36,9 @@ test -x /usr/local/bin/start-multica-runtime.sh
 test -x /usr/local/bin/configure-pi-runtime.sh
 test -x /usr/local/bin/configure-multica-runtime.sh
 test -x /entrypoint-multica-daemon.sh
+test -x /entrypoint-pi-web.sh
 test -x /usr/local/bin/multica
+test -f /opt/pi-web/server.js
 command -v pi >/dev/null 2>&1 || test -x /home/user/.npm-global/bin/pi
 '
 
@@ -57,7 +59,8 @@ create_args=(
   template create-from-image
   --image "${SOURCE_IMAGE}"
   --writable-layer-size "${WRITABLE_LAYER_SIZE}"
-  --expose-port 5901
+  # --expose-port 5901  # Cube 最多 3 个 expose-port；暂时不对外暴露 VNC
+  --expose-port 6079
   --expose-port 6080
   --expose-port 9223
   --probe "${PROBE_PORT}"
@@ -68,8 +71,11 @@ create_args=(
   --env 'RESOLUTION=1920x1080x24'
   --env 'RESOLUTION_WIDTH=1920'
   --env 'RESOLUTION_HEIGHT=1080'
-  --env 'VNC_PORT=5901'
+  # --env 'VNC_PORT=5901'
   --env 'NOVNC_PORT=6080'
+  --env 'PI_WEB_HOST=0.0.0.0'
+  --env 'PI_WEB_PORT=6079'
+  --env 'PI_WEB_WORKSPACE=/workspace'
   "${allow_args[@]}"
   --json
 )
