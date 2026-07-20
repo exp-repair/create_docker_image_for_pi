@@ -6,12 +6,18 @@ TAG="${TAG:-cube-leagent-template:local}"
 SANDBOX_IMAGE="${SANDBOX_IMAGE:-cube-sandbox-image.tencentcloudcr.com/demo/e2b-code-interpreter:v1.1-data}"
 PI_CONFIG="${PI_CONFIG:-config/pi.env}"
 
+# Bust Docker cache for the Multica install layer on every build so the latest
+# GitHub Release is always re-fetched. Override with a fixed value to reuse cache:
+#   MULTICA_INSTALL_CACHEBUST=reuse ./scripts/build.sh
+MULTICA_INSTALL_CACHEBUST="${MULTICA_INSTALL_CACHEBUST:-$(date -u +%Y%m%d%H%M%S)}"
+
 EXTRA=(
   --build-arg "SANDBOX_IMAGE=${SANDBOX_IMAGE}"
+  --build-arg "MULTICA_INSTALL_CACHEBUST=${MULTICA_INSTALL_CACHEBUST}"
 )
 [[ -n "${NOVNC_ARCHIVE_URL:-}" ]] && EXTRA+=(--build-arg "NOVNC_ARCHIVE_URL=${NOVNC_ARCHIVE_URL}")
 
-echo "[build.sh] Multica CLI/daemon will be installed from GitHub Releases during docker build"
+echo "[build.sh] Multica CLI/daemon will be re-installed from GitHub Releases (cachebust=${MULTICA_INSTALL_CACHEBUST})"
 
 if [[ -f "${PI_CONFIG}" ]]; then
   # Only non-secret build settings are used here. TEAM_* values are runtime envs.

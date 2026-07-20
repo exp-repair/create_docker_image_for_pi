@@ -14,7 +14,7 @@
 
 | 脚本 | 用途 |
 | --- | --- |
-| `build.sh` | 构建 Docker 镜像。构建过程中通过官方 `install.sh` 从 GitHub Releases 安装 `multica` CLI/daemon 到 `/usr/local/bin/multica`。支持通过环境变量控制镜像 tag、基础 sandbox 镜像、Pi 安装版本等。 |
+| `build.sh` | 构建 Docker 镜像。构建过程中通过官方 `install.sh` 从 GitHub Releases 安装 `multica` CLI/daemon 到 `/usr/local/bin/multica`。默认每次构建都会 bust Multica 安装层缓存以重新拉取最新 release；可用 `MULTICA_INSTALL_CACHEBUST=reuse` 复用缓存。支持通过环境变量控制镜像 tag、基础 sandbox 镜像、Pi 安装版本等。 |
 | `run.sh` | 本地启动容器进行调试。会加载 `config/pi.env`，清理旧容器，映射 `6080` noVNC、`5901` VNC、`49983/49999` API 端口，并传入 `TEAM_*`、`MULTICA_*` 等运行时环境变量。启动后会尝试确保 VNC 栈和 Multica daemon 已运行。 |
 | `diagnose.sh` | 诊断本地容器状态。输出容器信息、端口映射、VNC/noVNC/Xvfb 相关进程、监听端口、关键路径、s6 服务注册情况，并用 `curl` 检查本机端口可达性。 |
 | `create-cube-template.sh` | 将本项目构建出的 Docker 镜像注册成 Cube sandbox template。会检查镜像内是否包含 Cube、VNC、Pi、Multica 运行时脚本，调用 `cubemastercli template create-from-image` 创建模板，并把 `CUBE_TEMPLATE_ID` 等结果写入 `.cube-template.env`。 |
