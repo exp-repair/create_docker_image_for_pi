@@ -31,11 +31,16 @@ cd backend/core/sandbox/cube/docker_container
 Pi CLI is installed during image build, but `TEAM_API_KEY`, `TEAM_BASE_URL`, and
 `TEAM_MODEL` are not baked into the image. Pass them when the container starts.
 
-The image installs the Multica CLI/daemon from GitHub Releases during
-`docker build`, using the official installer:
+The image includes the Multica CLI/daemon binary. `./scripts/build.sh`
+downloads the latest GitHub Release on the host into `multica/bin/multica`,
+then copies it into the image (so Docker build does not need GitHub access).
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/LRM-Teams/multica/main/scripts/install.sh | bash
+./scripts/build.sh
+# reuse previously downloaded binary:
+MULTICA_SKIP_DOWNLOAD=1 ./scripts/build.sh
+# or use an existing local binary:
+MULTICA_LOCAL_BIN=/usr/local/bin/multica ./scripts/build.sh
 ```
 
 ## Run locally (smoke test)

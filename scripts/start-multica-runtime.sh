@@ -70,9 +70,11 @@ if [[ "$(id -u)" == "0" && -n "${RUN_AS_USER:-1}" ]] && id "${MULTICA_USER}" >/d
   exec runuser -u "${MULTICA_USER}" -- env \
     HOME="${MULTICA_HOME}" \
     PATH="/home/${MULTICA_USER}/.npm-global/bin:/home/${MULTICA_USER}/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin" \
+    TEAM_PI_CONFIG="${TEAM_PI_CONFIG:-}" \
     TEAM_API_KEY="${TEAM_API_KEY:-}" \
     TEAM_BASE_URL="${TEAM_BASE_URL:-}" \
     TEAM_MODEL="${TEAM_MODEL:-}" \
+    TEAM_PROVIDER="${TEAM_PROVIDER:-}" \
     BRIDGE_USER_ID="${BRIDGE_USER_ID:-}" \
     AREAL_BASE_URL="${AREAL_BASE_URL:-}" \
     AREAL_API="${AREAL_API:-}" \
@@ -91,10 +93,10 @@ fi
 
 mkdir -p "${MULTICA_HOME}/.multica"
 
-if [[ -n "${TEAM_API_KEY:-}" || -n "${TEAM_BASE_URL:-}" || -n "${TEAM_MODEL:-}" || -n "${BRIDGE_USER_ID:-}" ]]; then
+if [[ -n "${TEAM_PI_CONFIG:-}" || -n "${TEAM_API_KEY:-}" || -n "${TEAM_BASE_URL:-}" || -n "${TEAM_MODEL:-}" || -n "${TEAM_PROVIDER:-}" || -n "${BRIDGE_USER_ID:-}" ]]; then
   configure-pi-runtime.sh
 else
-  log "TEAM_* not provided; leaving Pi config unchanged"
+  log "TEAM_PI_CONFIG / TEAM_* not provided; leaving Pi config unchanged"
 fi
 
 configure-multica-runtime.sh

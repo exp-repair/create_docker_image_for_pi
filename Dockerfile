@@ -125,15 +125,9 @@ COPY s6-multica-daemon /etc/s6-overlay/s6-rc.d/multica-daemon
 COPY s6-pi-web /etc/s6-overlay/s6-rc.d/pi-web
 RUN /usr/local/bin/register-s6-services.sh
 
-# --- Multica CLI/daemon (GitHub Releases via official install script) ---
-# MULTICA_INSTALL_CACHEBUST changes each build (see scripts/build.sh) so this
-# layer is never reused from cache and always re-downloads the latest release.
-ARG MULTICA_INSTALL_CACHEBUST=manual
-RUN echo "multica install cachebust=${MULTICA_INSTALL_CACHEBUST}" \
-  && curl -fsSL https://raw.githubusercontent.com/LRM-Teams/multica/main/scripts/install.sh \
-    | MULTICA_BIN_DIR=/usr/local/bin bash \
-  && chmod +x /usr/local/bin/multica \
-  && multica version
+# --- Multica CLI/daemon (downloaded on host by scripts/build.sh, then copied) ---
+COPY --chown=user:user multica/bin/multica /usr/local/bin/multica
+RUN chmod +x /usr/local/bin/multica && multica version
 
 # --- Pi CLI (baked at build time; provider credentials are injected at runtime) ---
 ARG INSTALL_PI=1
