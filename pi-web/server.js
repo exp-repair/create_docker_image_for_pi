@@ -24,6 +24,9 @@ const MAX_EVENTS = 500;
 let rpc = null;
 let rpcBuffer = "";
 let starting = false;
+let restarting = false;
+let rpcEpoch = 0;
+let rpcReadyEpoch = -1;
 let resumeSessionFile = null;
 let state = {
   online: false,
@@ -99,21 +102,128 @@ function maskSecret(value) {
   return `${text.slice(0, 4)}...${text.slice(-4)}`;
 }
 
+// Built-in providers can override with only baseUrl/apiKey.
+// Custom provider names must declare api + models[] or Pi ignores them.
+const BUILTIN_PROVIDERS = new Set([
+  "openai",
+  "anthropic",
+  "google",
+  "google-vertex",
+  "amazon-bedrock",
+  "mistral",
+  "groq",
+  "cerebras",
+  "xai",
+  "openrouter",
+  "vercel-ai-gateway",
+  "github-copilot",
+  "azure-openai-responses",
+  "opencode",
+  "opencode-go",
+  "kimi-coding",
+]);
+
+function parseModelIds(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (typeof item === "string") return item.trim();
+        if (item && typeof item === "object" && item.id) return String(item.id).trim();
+        return "";
+      })
+      .filter(Boolean);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(/[\n,]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function modelIdList(models) {
+  if (!Array.isArray(models)) return [];
+  return models
+    .map((item) => {
+      if (typeof item === "string") return item.trim();
+      if (item && typeof item === "object" && item.id) return String(item.id).trim();
+      return "";
+    })
+    .filter(Boolean);
+}
+
+function providerEntries(providers) {
+  if (!providers || typeof providers !== "object") return [];
+  return Object.entries(providers).map(([name, cfg]) => {
+    const item = cfg && typeof cfg === "object" ? cfg : {};
+    return {
+      name,
+      baseUrl: item.baseUrl || "",
+      api: item.api || (BUILTIN_PROVIDERS.has(name) ? "" : "openai-completions"),
+      models: modelIdList(item.models),
+      hasApiKey: Boolean(item.apiKey),
+      apiKeyMasked: maskSecret(item.apiKey),
+      builtin: BUILTIN_PROVIDERS.has(name),
+    };
+  });
+}
+
+function normalizeProviderConfig(name, cfg, { defaultProvider, defaultModel }) {
+  const next = { ...cfg };
+  const builtin = BUILTIN_PROVIDERS.has(name);
+
+  if (!builtin && !next.api) next.api = "openai-completions";
+  if (next.api !== undefined) next.api = String(next.api || "").trim() || (builtin ? undefined : "openai-completions");
+  if (!next.api) delete next.api;
+
+  let models = Array.isArray(next.models) ? [...next.models] : [];
+  models = models
+    .map((item) => {
+      if (typeof item === "string") {
+        const id = item.trim();
+        return id ? { id } : null;
+      }
+      if (item && typeof item === "object" && item.id) return { ...item, id: String(item.id).trim() };
+      return null;
+    })
+    .filter((item) => item && item.id);
+
+  if (name === defaultProvider && defaultModel && !models.some((item) => item.id === defaultModel)) {
+    models.push({ id: defaultModel });
+  }
+
+  if (!builtin && models.length === 0) {
+    throw new Error(
+      `自定义 Provider "${name}" 必须配置至少一个 model id。仅写 baseUrl/apiKey 时 Pi 不会加载该 provider，仍会继续用 openai。`,
+    );
+  }
+
+  if (models.length) next.models = models;
+  else delete next.models;
+
+  if (!builtin) {
+    const compat = next.compat && typeof next.compat === "object" ? { ...next.compat } : {};
+    if (compat.supportsDeveloperRole === undefined) compat.supportsDeveloperRole = false;
+    if (compat.supportsReasoningEffort === undefined) compat.supportsReasoningEffort = false;
+    next.compat = compat;
+  }
+
+  return next;
+}
+
 function getModelConfig() {
   const models = readJsonFile(MODELS_FILE);
   const settings = readJsonFile(SETTINGS_FILE);
   const providers = models.providers && typeof models.providers === "object" ? models.providers : {};
-  const openai = providers.openai && typeof providers.openai === "object" ? providers.openai : {};
   const areal = models.areal && typeof models.areal === "object" ? models.areal : {};
   const arealHeaders = areal.headers && typeof areal.headers === "object" ? areal.headers : {};
   return {
-    defaultProvider: settings.defaultProvider || "openai",
+    defaultProvider: settings.defaultProvider || "",
     defaultModel: settings.defaultModel || "",
-    openai: {
-      baseUrl: openai.baseUrl || "",
-      hasApiKey: Boolean(openai.apiKey),
-      apiKeyMasked: maskSecret(openai.apiKey),
-    },
+    theme: settings.theme || "light",
+    providers: providerEntries(providers),
+    activeModel: state.model || null,
     areal: {
       baseUrl: areal.baseUrl || "",
       api: areal.api || "openai-completions",
@@ -127,33 +237,140 @@ function getModelConfig() {
 function saveModelConfig(body) {
   const models = readJsonFile(MODELS_FILE);
   const settings = readJsonFile(SETTINGS_FILE);
-  const providers = models.providers && typeof models.providers === "object" ? models.providers : {};
-  const openai = providers.openai && typeof providers.openai === "object" ? providers.openai : {};
-  const areal = models.areal && typeof models.areal === "object" ? models.areal : {};
+  const existingProviders = models.providers && typeof models.providers === "object" ? models.providers : {};
 
-  const nextOpenai = { ...openai };
-  if (body.openaiBaseUrl !== undefined) nextOpenai.baseUrl = String(body.openaiBaseUrl).trim();
-  if (body.openaiApiKey !== undefined && String(body.openaiApiKey).trim()) nextOpenai.apiKey = String(body.openaiApiKey).trim();
-  if (body.clearOpenaiApiKey) delete nextOpenai.apiKey;
-  providers.openai = nextOpenai;
+  const nextDefaultProvider =
+    body.defaultProvider !== undefined ? String(body.defaultProvider).trim() : settings.defaultProvider || "";
+  const nextDefaultModel =
+    body.defaultModel !== undefined ? String(body.defaultModel).trim() : settings.defaultModel || "";
 
-  const nextAreal = { ...areal };
-  if (body.arealBaseUrl !== undefined) nextAreal.baseUrl = String(body.arealBaseUrl).trim();
-  if (body.arealApi !== undefined) nextAreal.api = String(body.arealApi).trim() || "openai-completions";
-  if (body.arealApiKey !== undefined && String(body.arealApiKey).trim()) nextAreal.apiKey = String(body.arealApiKey).trim();
-  if (body.clearArealApiKey) delete nextAreal.apiKey;
-  const headers = nextAreal.headers && typeof nextAreal.headers === "object" ? nextAreal.headers : {};
-  if (body.bridgeUserId !== undefined) headers["X-Bridge-User-Id"] = String(body.bridgeUserId).trim();
-  nextAreal.headers = headers;
+  if (Array.isArray(body.providers)) {
+    const nextProviders = {};
+    for (const item of body.providers) {
+      const name = String((item && item.name) || "").trim();
+      if (!name) throw new Error("Provider 名称不能为空");
+      if (!/^[A-Za-z0-9._-]+$/.test(name)) {
+        throw new Error(`Provider 名称非法: ${name}（仅允许字母数字 . _ -）`);
+      }
+      if (Object.prototype.hasOwnProperty.call(nextProviders, name)) {
+        throw new Error(`重复的 Provider: ${name}`);
+      }
+      const prev = existingProviders[name] && typeof existingProviders[name] === "object" ? { ...existingProviders[name] } : {};
+      const next = { ...prev };
+      if (item.baseUrl !== undefined) next.baseUrl = String(item.baseUrl).trim();
+      if (item.api !== undefined) {
+        const api = String(item.api).trim();
+        if (api) next.api = api;
+        else if (!BUILTIN_PROVIDERS.has(name)) next.api = "openai-completions";
+        else delete next.api;
+      }
+      if (item.models !== undefined) {
+        const ids = parseModelIds(item.models);
+        next.models = ids.map((id) => {
+          const existing = Array.isArray(prev.models)
+            ? prev.models.find((entry) => entry && typeof entry === "object" && entry.id === id)
+            : null;
+          return existing ? { ...existing, id } : { id };
+        });
+      }
+      if (item.clearApiKey) delete next.apiKey;
+      else if (item.apiKey !== undefined && String(item.apiKey).trim()) next.apiKey = String(item.apiKey).trim();
+      nextProviders[name] = normalizeProviderConfig(name, next, {
+        defaultProvider: nextDefaultProvider,
+        defaultModel: nextDefaultModel,
+      });
+    }
+    models.providers = nextProviders;
+  } else {
+    // 兼容旧前端：仅更新 openai 单项
+    const providers = { ...existingProviders };
+    const openai = providers.openai && typeof providers.openai === "object" ? { ...providers.openai } : {};
+    if (body.openaiBaseUrl !== undefined) openai.baseUrl = String(body.openaiBaseUrl).trim();
+    if (body.openaiApiKey !== undefined && String(body.openaiApiKey).trim()) openai.apiKey = String(body.openaiApiKey).trim();
+    if (body.clearOpenaiApiKey) delete openai.apiKey;
+    if (body.openaiBaseUrl !== undefined || body.openaiApiKey !== undefined || body.clearOpenaiApiKey) {
+      providers.openai = openai;
+      models.providers = providers;
+    }
+  }
 
-  models.providers = providers;
-  models.areal = nextAreal;
-  if (body.defaultProvider !== undefined) settings.defaultProvider = String(body.defaultProvider).trim() || "openai";
-  if (body.defaultModel !== undefined) settings.defaultModel = String(body.defaultModel).trim();
+  // Ensure default provider/model is actually selectable by Pi.
+  if (nextDefaultProvider && nextDefaultModel && models.providers && models.providers[nextDefaultProvider]) {
+    models.providers[nextDefaultProvider] = normalizeProviderConfig(
+      nextDefaultProvider,
+      { ...models.providers[nextDefaultProvider] },
+      { defaultProvider: nextDefaultProvider, defaultModel: nextDefaultModel },
+    );
+  }
+
+  const areal = models.areal && typeof models.areal === "object" ? { ...models.areal } : {};
+  let arealTouched = false;
+  if (body.arealBaseUrl !== undefined) {
+    areal.baseUrl = String(body.arealBaseUrl).trim();
+    arealTouched = true;
+  }
+  if (body.arealApi !== undefined) {
+    areal.api = String(body.arealApi).trim() || "openai-completions";
+    arealTouched = true;
+  }
+  if (body.arealApiKey !== undefined && String(body.arealApiKey).trim()) {
+    areal.apiKey = String(body.arealApiKey).trim();
+    arealTouched = true;
+  }
+  if (body.clearArealApiKey) {
+    delete areal.apiKey;
+    arealTouched = true;
+  }
+  if (body.bridgeUserId !== undefined) {
+    const headers = areal.headers && typeof areal.headers === "object" ? { ...areal.headers } : {};
+    headers["X-Bridge-User-Id"] = String(body.bridgeUserId).trim();
+    areal.headers = headers;
+    arealTouched = true;
+  }
+  if (arealTouched) models.areal = areal;
+
+  if (body.defaultProvider !== undefined) settings.defaultProvider = nextDefaultProvider;
+  if (body.defaultModel !== undefined) settings.defaultModel = nextDefaultModel;
+  if (body.theme !== undefined) {
+    const theme = String(body.theme).trim() || "light";
+    settings.theme = theme;
+  }
 
   writeJsonFile(MODELS_FILE, models);
   writeJsonFile(SETTINGS_FILE, settings);
   return getModelConfig();
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForRpcReady(minEpoch = rpcReadyEpoch, timeoutMs = 30000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (rpc && rpc.stdin && rpc.stdin.writable && rpcReadyEpoch >= minEpoch && state.online) {
+      try {
+        await refreshState();
+        if (state.online && rpcReadyEpoch >= minEpoch) return;
+      } catch {
+        // keep waiting while pi restarts
+      }
+    }
+    await sleep(300);
+  }
+  throw new Error("Pi RPC 重启超时，配置已写入但模型可能尚未切换");
+}
+
+async function applyConfiguredModel(config) {
+  const provider = String(config.defaultProvider || "").trim();
+  const modelId = String(config.defaultModel || "").trim();
+  if (!provider || !modelId) return null;
+  const result = await rpcCommand({ type: "set_model", provider, modelId }, 30000);
+  if (!result.success) {
+    throw new Error(result.error || `set_model 失败: ${provider}/${modelId}`);
+  }
+  await refreshState();
+  return result.data || state.model;
 }
 
 function sendSse(res, payload) {
@@ -176,12 +393,21 @@ function summarizeText(content) {
     .join("");
 }
 
+function summarizeThinking(content) {
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((block) => block && (block.type === "thinking" || block.type === "reasoning"))
+    .map((block) => block.thinking || block.reasoning || block.text || "")
+    .join("");
+}
+
 function normalizeMessage(message) {
   if (!message || typeof message !== "object") return null;
   if (message.role === "assistant") {
     return {
       role: "assistant",
       text: summarizeText(message.content),
+      thinking: summarizeThinking(message.content),
       content: message.content || [],
       model: message.model,
       provider: message.provider,
@@ -285,6 +511,7 @@ function pickState(data) {
 function startRpc() {
   if (rpc || starting) return;
   starting = true;
+  const epoch = rpcEpoch;
   const args = ["--mode", "rpc"];
   if (resumeSessionFile && safeSessionPath(resumeSessionFile) && fs.existsSync(resumeSessionFile)) args.push("--session", resumeSessionFile);
   if (process.env.PI_WEB_PI_ARGS) args.push(...process.env.PI_WEB_PI_ARGS.split(/\s+/).filter(Boolean));
@@ -315,12 +542,14 @@ function startRpc() {
   rpc.stderr.on("data", (chunk) => broadcast("stderr", { text: chunk }));
   rpc.on("spawn", () => {
     starting = false;
+    rpcReadyEpoch = epoch;
     setState({ online: true });
     void refreshState();
   });
   rpc.on("exit", (code, signal) => {
     rpc = null;
     starting = false;
+    rpcReadyEpoch = -1;
     for (const [id, item] of pending) {
       clearTimeout(item.timeout);
       item.reject(new Error(`Pi RPC exited before response ${id}`));
@@ -328,17 +557,24 @@ function startRpc() {
     pending.clear();
     setState({ online: false, isStreaming: false });
     broadcast("error", { message: "Pi RPC process exited", code, signal });
-    setTimeout(startRpc, 1500);
+    const delay = restarting ? 100 : 1500;
+    restarting = false;
+    setTimeout(startRpc, delay);
   });
 }
 
 function restartRpc() {
   resumeSessionFile = safeSessionPath(state.sessionFile) || null;
+  rpcEpoch += 1;
+  restarting = true;
+  setState({ online: false, isStreaming: false });
   if (rpc) {
     rpc.kill("SIGTERM");
   } else {
+    restarting = false;
     startRpc();
   }
+  return rpcEpoch;
 }
 
 function rpcCommand(command, timeoutMs = 120000) {
@@ -428,9 +664,28 @@ async function handleApi(req, res, url) {
     if (req.method === "POST" && url.pathname === "/api/model-config") {
       const body = await readBody(req);
       const config = saveModelConfig(body);
-      if (body.restart !== false) restartRpc();
-      broadcast("model_config", config);
-      return json(res, 200, { success: true, config, restarted: body.restart !== false });
+      let modelApplied = null;
+      let applyError = null;
+      if (body.restart !== false) {
+        const epoch = restartRpc();
+        try {
+          await waitForRpcReady(epoch);
+          modelApplied = await applyConfiguredModel(config);
+        } catch (error) {
+          applyError = error.message;
+          broadcast("error", { message: "配置已保存，但切换模型失败", detail: error.message });
+        }
+      }
+      const latest = getModelConfig();
+      broadcast("model_config", latest);
+      return json(res, 200, {
+        success: true,
+        config: latest,
+        restarted: body.restart !== false,
+        modelApplied,
+        applyError,
+        currentModel: state.model,
+      });
     }
     if (req.method === "GET" && url.pathname === "/api/sessions") {
       const sessions = listSessionFiles(SESSIONS_ROOT)

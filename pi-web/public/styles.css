@@ -13,9 +13,13 @@
 
 * { box-sizing: border-box; }
 
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
-  min-height: 100vh;
   color: var(--ink);
   font-family: Georgia, "Noto Serif CJK SC", "Songti SC", serif;
   background:
@@ -44,11 +48,14 @@ button { cursor: pointer; }
   display: grid;
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
   gap: 18px;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
   padding: 18px;
+  overflow: hidden;
 }
 
 .sidebar, .stage {
+  min-height: 0;
   border: 1px solid var(--line);
   background: var(--panel);
   box-shadow: var(--shadow);
@@ -61,12 +68,14 @@ button { cursor: pointer; }
   gap: 18px;
   padding: 20px;
   border-radius: 28px;
+  overflow: hidden;
 }
 
 .brand {
   display: flex;
   gap: 14px;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .sigil {
@@ -104,10 +113,18 @@ h2 { font-size: clamp(24px, 3vw, 42px); }
   box-shadow: 0 14px 34px rgba(189, 75, 47, 0.24);
 }
 
+#newSession {
+  flex-shrink: 0;
+}
+
 .toolbar button, .search-wrap input, .composer textarea, .settings-card input {
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.58);
   color: var(--ink);
+}
+
+.search-wrap {
+  flex-shrink: 0;
 }
 
 .search-wrap input {
@@ -120,7 +137,12 @@ h2 { font-size: clamp(24px, 3vw, 42px); }
 .sessions {
   display: grid;
   gap: 10px;
-  overflow: auto;
+  align-content: start;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding-right: 2px;
 }
 
@@ -173,7 +195,7 @@ h2 { font-size: clamp(24px, 3vw, 42px); }
   background: linear-gradient(90deg, rgba(255,255,255,0.72), rgba(255,255,255,0.24));
 }
 
-.toolbar { display: flex; gap: 10px; }
+.toolbar { display: flex; gap: 10px; flex-shrink: 0; flex-wrap: wrap; }
 .toolbar button {
   border-radius: 999px;
   padding: 9px 14px;
@@ -183,8 +205,12 @@ h2 { font-size: clamp(24px, 3vw, 42px); }
   display: flex;
   flex-direction: column;
   gap: 14px;
-  overflow: auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 24px 26px;
+  scroll-behavior: smooth;
 }
 
 .empty {
@@ -203,6 +229,7 @@ h2 { font-size: clamp(24px, 3vw, 42px); }
   background: rgba(255, 255, 255, 0.58);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  flex-shrink: 0;
 }
 
 .message .role {
@@ -233,6 +260,86 @@ h2 { font-size: clamp(24px, 3vw, 42px); }
   background: rgba(232, 238, 239, 0.72);
 }
 
+.message.thinking {
+  max-width: min(780px, 92%);
+  align-self: flex-start;
+  padding: 0;
+  background: rgba(243, 239, 230, 0.78);
+  border-color: rgba(36, 56, 79, 0.16);
+}
+
+.message.thinking details {
+  padding: 12px 16px;
+}
+
+.message.thinking summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--blueprint);
+  font-family: "Courier New", "Noto Sans Mono CJK SC", monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.message.thinking summary::-webkit-details-marker { display: none; }
+
+.message.thinking summary::before {
+  content: "▸ ";
+  color: var(--oxide);
+}
+
+.message.thinking details[open] summary::before {
+  content: "▾ ";
+}
+
+.message.thinking .text {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.message.tool details,
+.message.event details {
+  margin: 0;
+}
+
+.message.tool summary,
+.message.event summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--muted);
+  font-family: "Courier New", "Noto Sans Mono CJK SC", monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.message.tool summary::-webkit-details-marker,
+.message.event summary::-webkit-details-marker { display: none; }
+
+.message.tool summary::before,
+.message.event summary::before {
+  content: "▸ ";
+  color: var(--oxide);
+}
+
+.message.tool details[open] summary::before,
+.message.event details[open] summary::before {
+  content: "▾ ";
+}
+
+.message.tool .text,
+.message.event .text {
+  margin-top: 8px;
+  white-space: pre-wrap;
+}
+
 .composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -253,12 +360,14 @@ h2 { font-size: clamp(24px, 3vw, 42px); }
 }
 
 .settings-dialog {
-  width: min(760px, calc(100vw - 24px));
+  width: min(820px, calc(100vw - 24px));
+  max-height: calc(100vh - 32px);
   border: 0;
   border-radius: 28px;
   padding: 0;
   color: var(--ink);
   background: transparent;
+  overflow: auto;
 }
 
 .settings-dialog::backdrop {
@@ -294,11 +403,91 @@ h2 { font-size: clamp(24px, 3vw, 42px); }
   color: var(--blueprint);
 }
 
-.settings-card input {
+.settings-card input,
+.settings-card select {
   width: 100%;
   border-radius: 14px;
   padding: 11px 12px;
   outline: none;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--ink);
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.providers-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.providers-head .split-title {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.providers-list {
+  display: grid;
+  gap: 12px;
+}
+
+.providers-empty {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 16px;
+}
+
+.provider-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.provider-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.provider-card-head strong {
+  font-family: "Courier New", monospace;
+  letter-spacing: 0.04em;
+}
+
+.ghost.danger {
+  color: var(--oxide);
+  border-color: rgba(189, 75, 47, 0.35);
+}
+
+.areal-details {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.areal-details summary {
+  cursor: pointer;
+  color: var(--oxide);
+  font-family: "Courier New", monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.areal-fields {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
 }
 
 .checkline {
@@ -336,7 +525,7 @@ h2 { font-size: clamp(24px, 3vw, 42px); }
   padding: 10px 14px;
 }
 
-.composer textarea:focus, .search-wrap input:focus, .settings-card input:focus, button:focus-visible {
+.composer textarea:focus, .search-wrap input:focus, .settings-card input:focus, .settings-card select:focus, button:focus-visible {
   outline: 3px solid rgba(240, 195, 90, 0.55);
   outline-offset: 2px;
 }
@@ -344,10 +533,11 @@ h2 { font-size: clamp(24px, 3vw, 42px); }
 @media (max-width: 820px) {
   .shell {
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(220px, 34vh) minmax(0, 1fr);
     padding: 10px;
   }
   .sidebar {
-    max-height: 36vh;
+    max-height: none;
   }
   .topbar, .composer {
     grid-template-columns: 1fr;
@@ -357,6 +547,13 @@ h2 { font-size: clamp(24px, 3vw, 42px); }
     flex-direction: column;
   }
   .message { max-width: 100%; }
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+  .providers-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {

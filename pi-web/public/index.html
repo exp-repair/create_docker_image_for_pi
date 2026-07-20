@@ -49,50 +49,61 @@
     <form id="modelConfigForm" class="settings-card">
       <div class="settings-head">
         <div>
-          <p class="eyebrow">Runtime model wiring</p>
-          <h3>大模型配置</h3>
+          <p class="eyebrow">~/.pi/agent</p>
+          <h3>模型配置</h3>
         </div>
         <button id="closeSettings" class="ghost" type="button">关闭</button>
       </div>
 
-      <label>默认 provider
-        <input id="defaultProvider" name="defaultProvider" placeholder="openai">
-      </label>
-      <label>默认模型
-        <input id="defaultModel" name="defaultModel" placeholder="gpt-5.5">
-      </label>
-      <label>OpenAI 兼容地址
-        <input id="openaiBaseUrl" name="openaiBaseUrl" placeholder="https://example.com/openai/v1">
-      </label>
-      <label>OpenAI 兼容 Key
-        <input id="openaiApiKey" name="openaiApiKey" type="password" autocomplete="new-password" placeholder="留空则保持不变">
-        <span id="openaiKeyHint" class="hint"></span>
-      </label>
-      <label class="checkline">
-        <input id="clearOpenaiApiKey" name="clearOpenaiApiKey" type="checkbox">
-        清空 OpenAI Key
-      </label>
+      <div class="split-title">settings.json</div>
+      <div class="settings-grid">
+        <label>默认 Provider
+          <select id="defaultProvider" name="defaultProvider"></select>
+        </label>
+        <label>默认模型
+          <input id="defaultModel" name="defaultModel" placeholder="glm-5.2">
+        </label>
+        <label>主题 theme
+          <select id="theme" name="theme">
+            <option value="light">light</option>
+            <option value="dark">dark</option>
+          </select>
+        </label>
+      </div>
 
-      <div class="split-title">Areal bridge</div>
-      <label>Areal 地址
-        <input id="arealBaseUrl" name="arealBaseUrl" placeholder="http://10.110.158.143:9100/v1">
-      </label>
-      <label>Areal API 类型
-        <input id="arealApi" name="arealApi" placeholder="openai-completions">
-      </label>
-      <label>Areal Key
-        <input id="arealApiKey" name="arealApiKey" type="password" autocomplete="new-password" placeholder="留空则保持不变">
-        <span id="arealKeyHint" class="hint"></span>
-      </label>
-      <label>Bridge User ID
-        <input id="bridgeUserId" name="bridgeUserId" placeholder="X-Bridge-User-Id">
-      </label>
-      <label class="checkline">
-        <input id="clearArealApiKey" name="clearArealApiKey" type="checkbox">
-        清空 Areal Key
-      </label>
+      <div class="providers-head">
+        <div class="split-title">models.json · providers</div>
+        <button id="addProvider" class="ghost" type="button">添加 Provider</button>
+      </div>
+      <div id="providersList" class="providers-list"></div>
 
-      <p class="hint">保存后会重启 Pi RPC，使新 Key / 地址 / 模型立即生效；当前会话文件会自动恢复。</p>
+      <details class="areal-details">
+        <summary>Areal bridge（可选）</summary>
+        <div class="areal-fields">
+          <label>Areal 地址
+            <input id="arealBaseUrl" name="arealBaseUrl" placeholder="http://10.110.158.143:9100/v1">
+          </label>
+          <label>Areal API 类型
+            <input id="arealApi" name="arealApi" placeholder="openai-completions">
+          </label>
+          <label>Areal Key
+            <input id="arealApiKey" name="arealApiKey" type="password" autocomplete="new-password" placeholder="留空则保持不变">
+            <span id="arealKeyHint" class="hint"></span>
+          </label>
+          <label>Bridge User ID
+            <input id="bridgeUserId" name="bridgeUserId" placeholder="X-Bridge-User-Id">
+          </label>
+          <label class="checkline">
+            <input id="clearArealApiKey" name="clearArealApiKey" type="checkbox">
+            清空 Areal Key
+          </label>
+        </div>
+      </details>
+
+      <p class="hint">
+        自定义 Provider（如 zai-coding-cn）必须填写 API 类型和 models。智谱模型代码带连字符，例如 <code>glm-5.2</code> / <code>glm-4.6</code>。
+        保存后会重启 Pi 并切换到默认 Provider/模型。
+      </p>
       <div class="settings-actions">
         <button class="ghost" type="button" id="reloadConfig">重新读取</button>
         <button class="primary-action" type="submit">保存并重启 Pi</button>

@@ -125,9 +125,11 @@ COPY s6-multica-daemon /etc/s6-overlay/s6-rc.d/multica-daemon
 COPY s6-pi-web /etc/s6-overlay/s6-rc.d/pi-web
 RUN /usr/local/bin/register-s6-services.sh
 
-# --- Multica daemon binary (built from local checkout) ---
-COPY --chown=user:user multica/server/bin/multica /usr/local/bin/multica
-RUN chmod +x /usr/local/bin/multica
+# --- Multica CLI/daemon (GitHub Releases via official install script) ---
+RUN curl -fsSL https://raw.githubusercontent.com/LRM-Teams/multica/main/scripts/install.sh \
+    | MULTICA_BIN_DIR=/usr/local/bin bash \
+  && chmod +x /usr/local/bin/multica \
+  && multica version
 
 # --- Pi CLI (baked at build time; provider credentials are injected at runtime) ---
 ARG INSTALL_PI=1
