@@ -79,7 +79,8 @@ import json, os, subprocess
 runtime_env = json.loads(%r)
 env = os.environ.copy()
 env.update(runtime_env)
-env["PATH"] = "/home/user/.npm-global/bin:/home/user/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
+env["HOME"] = "/root"
+env["PATH"] = "/root/.npm-global/bin:/root/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
 proc = subprocess.run(["bash", "-lc", "/usr/local/bin/start-multica-runtime.sh"], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60, env=env)
 print(proc.stdout)
 if proc.returncode != 0:

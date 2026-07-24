@@ -1,104 +1,87 @@
-# Leagent Cube/E2B sandbox template — aligned with River (Daytona) tool contracts.
+# Slim Cube sandbox image for db-bridge + Multica + Pi + browser automation.
 #
-# Installs only what the e2b-code-interpreter base lacks:
-# - VNC live view (:0 / :5901 / :6080)
-# - system Chromium + Leagent CDP bootstrap (:9223)
-# - /workspace layout + River-style CLI/Python tools
-#
-# Build: ./scripts/build.sh
+# Runtime policy: all account-scoped tools/config live under root. The extra
+# base-image `user` account is removed at the end of the build.
 
-ARG SANDBOX_IMAGE=cube-sandbox-image.tencentcloudcr.com/demo/e2b-code-interpreter:v1.1-data
+ARG SANDBOX_IMAGE=cube-sandbox-cn.tencentcloudcr.com/cube-sandbox/sandbox-code@sha256:b551b169de85c0216cce9453a8e22059ca47fd3dceced75e918cf1c8de60464b
 FROM ${SANDBOX_IMAGE}
 
-ARG NOVNC_ARCHIVE_URL=
+ARG NODE_MAJOR=22
+ARG INSTALL_PI=1
+ARG PI_SUITE_VERSION=0.1.17
+ARG PI_SUITE=npm:@lebronj/pi-suite
+ARG PI_WORKSPACE_DIR=/workspace
+ARG PI_EVOLUTION_ENABLED=1
+ARG NPM_REGISTRY=
 
 USER root
 
-ENV PIP_ROOT_USER_ACTION=ignore
-ENV PYTHONUNBUFFERED=1
-ENV ANONYMIZED_TELEMETRY=false
-ENV DISPLAY=:0
-ENV SCREEN_GEOM=1920x1080x24
-ENV RESOLUTION=1920x1080x24
-ENV RESOLUTION_WIDTH=1920
-ENV RESOLUTION_HEIGHT=1080
-ENV VNC_PORT=5901
-ENV NOVNC_PORT=6080
+ENV HOME=/root \
+    PIP_ROOT_USER_ACTION=ignore \
+    PYTHONUNBUFFERED=1 \
+    ANONYMIZED_TELEMETRY=false \
+    DISPLAY=:0 \
+    SCREEN_GEOM=1920x1080x24 \
+    RESOLUTION=1920x1080x24 \
+    RESOLUTION_WIDTH=1920 \
+    RESOLUTION_HEIGHT=1080 \
+    VNC_PORT=5901 \
+    NOVNC_PORT=6080 \
+    CHROME_REMOTE_DEBUGGING_PORT=9223 \
+    CODE_INTERPRETER_HOST=0.0.0.0 \
+    CODE_INTERPRETER_PORT=49999 \
+    CODE_INTERPRETER_WORKDIR=/workspace \
+    PATH=/root/.npm-global/bin:/root/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
 
-# --- VNC + browser (Cube-specific; River gets these from daytonaio/sandbox) ---
+# Minimal OS surface for Pi, Multica daemon, db-bridge calls, VNC/noVNC,
+# Chromium, and Playwright-over-system-browser. Avoid doc/debug packages.
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
+    gnupg \
+    git \
+    jq \
+    procps \
+    iproute2 \
+    fd-find \
+    file \
+    less \
+    ripgrep \
     chromium \
-    xdotool \
     openbox \
     xvfb \
     x11-utils \
     x11vnc \
+    xdotool \
+    novnc \
     websockify \
     fontconfig \
     fonts-liberation \
     fonts-noto-cjk \
     fonts-noto-color-emoji \
-  && mkdir -p /usr/share \
-  && set -eux; \
-     fetch_novnc() { \
-       curl -fsSL \
-         --connect-timeout 120 \
-         --max-time 3600 \
-         --retry 6 \
-         --retry-delay 15 \
-         --retry-all-errors \
-         -o /tmp/novnc.tgz \
-         "$1"; \
-     }; \
-     if [ -n "${NOVNC_ARCHIVE_URL}" ]; then \
-       fetch_novnc "${NOVNC_ARCHIVE_URL}"; \
-     else \
-       fetch_novnc "https://github.com/novnc/noVNC/archive/refs/tags/v1.7.0.tar.gz" \
-       || fetch_novnc "https://ghproxy.net/https://github.com/novnc/noVNC/archive/refs/tags/v1.7.0.tar.gz" \
-       || fetch_novnc "https://kgithub.com/noVNC/noVNC/archive/refs/tags/v1.7.0.tar.gz"; \
-     fi \
-  && tar xzf /tmp/novnc.tgz -C /tmp \
-  && rm -f /tmp/novnc.tgz \
-  && mv /tmp/noVNC-1.7.0 /usr/share/novnc \
-  && rm -rf /tmp/noVNC-* \
-  && rm -rf /var/lib/apt/lists/*
-
-# --- Agent CLI tools (same set as backend/core/sandbox/docker/Dockerfile) ---
-RUN apt-get update \
-  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    antiword \
-    catdoc \
-    csvkit \
-    fd-find \
-    file \
-    gawk \
-    jq \
-    less \
-    poppler-utils \
-    ripgrep \
-    rsync \
-    tree \
-    unrtf \
-    vim \
-    xmlstarlet \
+  && mkdir -p /etc/apt/keyrings \
+  && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+  && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
+    > /etc/apt/sources.list.d/nodesource.list \
+  && apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nodejs \
   && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
-  && rm -rf /var/lib/apt/lists/*
+  && apt-get purge -y --auto-remove gnupg \
+  && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 COPY novnc-index.html /usr/share/novnc/index.html
 
-RUN mkdir -p /tmp/.X11-unix \
+RUN mkdir -p /tmp/.X11-unix /workspace/uploads /workspace/browser-shots /data/browser-profile /root/.npm-global \
   && chmod 1777 /tmp/.X11-unix \
-  && mkdir -p /workspace/uploads /workspace/browser-shots /data/browser-profile \
-  && chown -R user:user /workspace /data/browser-profile \
-  && chmod 755 /workspace /data
+  && chown -R root:root /workspace /data/browser-profile /root/.npm-global \
+  && chmod 755 /workspace /data /data/browser-profile
 
 WORKDIR /workspace
 
 COPY requirements.txt /tmp/leagent-requirements.txt
-RUN pip3 install --break-system-packages --no-cache-dir -r /tmp/leagent-requirements.txt \
+RUN pip3 install --no-cache-dir -r /tmp/leagent-requirements.txt \
   && rm -f /tmp/leagent-requirements.txt
 
 COPY scripts/entrypoint-vnc.sh /entrypoint-vnc.sh
@@ -108,7 +91,6 @@ COPY scripts/cube-start.sh /usr/local/bin/cube-start.sh
 COPY scripts/configure-pi-runtime.sh /usr/local/bin/configure-pi-runtime.sh
 COPY scripts/configure-multica-runtime.sh /usr/local/bin/configure-multica-runtime.sh
 COPY scripts/start-multica-runtime.sh /usr/local/bin/start-multica-runtime.sh
-COPY scripts/register-s6-services.sh /usr/local/bin/register-s6-services.sh
 COPY scripts/cont-init-browser.sh /etc/cont-init.d/99-browser-vnc
 RUN chmod +x /entrypoint-vnc.sh \
   /entrypoint-multica-daemon.sh \
@@ -117,33 +99,13 @@ RUN chmod +x /entrypoint-vnc.sh \
   /usr/local/bin/configure-pi-runtime.sh \
   /usr/local/bin/configure-multica-runtime.sh \
   /usr/local/bin/start-multica-runtime.sh \
-  /usr/local/bin/register-s6-services.sh \
   /etc/cont-init.d/99-browser-vnc
 
-COPY s6-playwright-vnc /etc/s6-overlay/s6-rc.d/playwright-vnc
-COPY s6-multica-daemon /etc/s6-overlay/s6-rc.d/multica-daemon
-COPY s6-pi-web /etc/s6-overlay/s6-rc.d/pi-web
-RUN /usr/local/bin/register-s6-services.sh
-
-# --- Multica CLI/daemon (downloaded on host by scripts/build.sh, then copied) ---
-COPY --chown=user:user multica/bin/multica /usr/local/bin/multica
+# Multica CLI/daemon is downloaded on the host by scripts/build.sh, then copied.
+COPY multica/bin/multica /usr/local/bin/multica
 RUN chmod +x /usr/local/bin/multica && multica version
 
-# --- Pi CLI (baked at build time; provider credentials are injected at runtime) ---
-ARG INSTALL_PI=1
-ARG PI_SUITE_VERSION=0.1.17
-ARG PI_SUITE=npm:@lebronj/pi-suite
-ARG PI_WORKSPACE_DIR=/workspace
-ARG PI_EVOLUTION_ENABLED=1
-ARG NPM_REGISTRY=
-
-USER user
-ENV HOME=/home/user
-ENV PATH="/home/user/.npm-global/bin:/home/user/.bun/bin:${PATH}"
-WORKDIR /workspace
-
-RUN mkdir -p /home/user/.npm-global \
-  && npm config set prefix /home/user/.npm-global \
+RUN npm config set prefix /root/.npm-global \
   && npm config set fetch-retries 5 \
   && npm config set fetch-retry-mintimeout 20000 \
   && npm config set fetch-retry-maxtimeout 120000 \
@@ -157,34 +119,25 @@ RUN if [ "${INSTALL_PI}" != "1" ]; then \
         echo "Using npm registry: ${NPM_REGISTRY}"; \
       fi; \
       npm install -g --ignore-scripts @earendil-works/pi-coding-agent; \
-      mkdir -p "${HOME}/.pi/agent"; \
+      mkdir -p /root/.pi/agent; \
       PI_SUITE_SOURCE="${PI_SUITE}"; \
       if [ "${PI_SUITE}" = "npm:@lebronj/pi-suite" ] && [ -n "${PI_SUITE_VERSION}" ]; then \
         PI_SUITE_SOURCE="npm:@lebronj/pi-suite@${PI_SUITE_VERSION}"; \
       fi; \
       pi install "${PI_SUITE_SOURCE}"; \
-      if command -v bun >/dev/null 2>&1; then \
-        bun install -g https://github.com/tobi/qmd; \
-        export PATH="${HOME}/.bun/bin:${PATH}"; \
-        mkdir -p "${HOME}/.pi/agent/memory"; \
-        if command -v qmd >/dev/null 2>&1; then \
-          qmd collection add "${HOME}/.pi/agent/memory" --name pi-memory || true; \
-          qmd embed || true; \
-        fi; \
-      else \
-        echo "Bun not found. Core memory tools still work, but memory_search needs qmd."; \
-      fi; \
     fi
 
-USER root
+RUN ln -sf /root/.npm-global/bin/pi /usr/local/bin/pi \
+  && ln -sf /root/.npm-global/bin/pi-mcp-adapter /usr/local/bin/pi-mcp-adapter || true
 
-RUN ln -sf /home/user/.npm-global/bin/pi /usr/local/bin/pi \
-  && ln -sf /home/user/.npm-global/bin/pi-mcp-adapter /usr/local/bin/pi-mcp-adapter || true
+COPY pi-web /opt/pi-web
 
-COPY --chown=user:user pi-web /opt/pi-web
+# Remove the non-root working account inherited from the Cube base image. System
+# accounts such as nobody/daemon remain because Debian packages may rely on them.
+RUN userdel -r user 2>/dev/null || true \
+  && rm -rf /home/user
 
-ENV PATH="/home/user/.npm-global/bin:/home/user/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/cube-start.sh"]
 
-EXPOSE 5901 6079 6080 49983 49999
+EXPOSE 5901 6079 6080 9223 49983 49999

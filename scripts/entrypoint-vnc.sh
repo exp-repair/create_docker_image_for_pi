@@ -3,7 +3,7 @@
 # Optionally auto-opens Chromium on DISPLAY for noVNC (default: Baidu homepage).
 set -euo pipefail
 
-export HOME=/home/user
+export HOME="${HOME:-/root}"
 
 SCREEN_GEOM="${SCREEN_GEOM:-${RESOLUTION:-1920x1080x24}}"
 VNC_PORT="${VNC_PORT:-5901}"
@@ -94,10 +94,14 @@ start_browser() {
   local width="${RESOLUTION_WIDTH:-1920}"
   local height="${RESOLUTION_HEIGHT:-1080}"
   echo "[entrypoint-vnc] starting Chromium (${width}x${height} desktop): ${BROWSER_START_URL}"
+  mkdir -p /data/browser-profile
   chromium \
     --no-sandbox \
     --disable-gpu \
     --disable-dev-shm-usage \
+    --remote-debugging-address=0.0.0.0 \
+    --remote-debugging-port="${CHROME_REMOTE_DEBUGGING_PORT:-9223}" \
+    --user-data-dir=/data/browser-profile \
     --start-maximized \
     --window-size="${width},${height}" \
     --window-position=0,0 \

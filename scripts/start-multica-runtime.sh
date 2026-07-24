@@ -4,8 +4,8 @@ set -euo pipefail
 
 log() { echo "[start-multica-runtime] $*"; }
 
-MULTICA_USER="${MULTICA_USER:-user}"
-MULTICA_HOME="${MULTICA_HOME:-/home/${MULTICA_USER}}"
+MULTICA_USER="${MULTICA_USER:-root}"
+MULTICA_HOME="${MULTICA_HOME:-/root}"
 export HOME="${HOME:-${MULTICA_HOME}}"
 
 resolve_sandbox_device_name() {
@@ -66,30 +66,7 @@ PY
 
 resolve_sandbox_device_name
 
-if [[ "$(id -u)" == "0" && -n "${RUN_AS_USER:-1}" ]] && id "${MULTICA_USER}" >/dev/null 2>&1; then
-  exec runuser -u "${MULTICA_USER}" -- env \
-    HOME="${MULTICA_HOME}" \
-    PATH="/home/${MULTICA_USER}/.npm-global/bin:/home/${MULTICA_USER}/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin" \
-    TEAM_PI_CONFIG="${TEAM_PI_CONFIG:-}" \
-    TEAM_API_KEY="${TEAM_API_KEY:-}" \
-    TEAM_BASE_URL="${TEAM_BASE_URL:-}" \
-    TEAM_MODEL="${TEAM_MODEL:-}" \
-    TEAM_PROVIDER="${TEAM_PROVIDER:-}" \
-    BRIDGE_USER_ID="${BRIDGE_USER_ID:-}" \
-    AREAL_BASE_URL="${AREAL_BASE_URL:-}" \
-    AREAL_API="${AREAL_API:-}" \
-    AREAL_API_KEY="${AREAL_API_KEY:-}" \
-    MULTICA_SERVER_URL="${MULTICA_SERVER_URL:-}" \
-    MULTICA_APP_URL="${MULTICA_APP_URL:-}" \
-    MULTICA_WORKSPACE_ID="${MULTICA_WORKSPACE_ID:-}" \
-    MULTICA_TOKEN="${MULTICA_TOKEN:-}" \
-    MULTICA_PROFILE="${MULTICA_PROFILE:-}" \
-    MULTICA_DAEMON_ENABLED="${MULTICA_DAEMON_ENABLED:-1}" \
-    MULTICA_DAEMON_DEVICE_NAME="${MULTICA_DAEMON_DEVICE_NAME:-}" \
-    MULTICA_SANDBOX_NAME="${MULTICA_SANDBOX_NAME:-}" \
-    RUN_AS_USER= \
-    /usr/local/bin/start-multica-runtime.sh "$@"
-fi
+export PATH="/root/.npm-global/bin:/root/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
 
 mkdir -p "${MULTICA_HOME}/.multica"
 

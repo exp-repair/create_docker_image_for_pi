@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 IMAGE="${IMAGE:-cube-leagent-template:local}"
 NAME="${NAME:-cube-leagent}"
 PI_CONFIG="${PI_CONFIG:-config/pi.env}"
+DOCKER_BIN="${DOCKER_BIN:-docker}"
 
 if [[ -f "${PI_CONFIG}" ]]; then
   # shellcheck disable=SC1090
@@ -14,15 +15,15 @@ if [[ -f "${PI_CONFIG}" ]]; then
   echo "[run.sh] loaded runtime Pi config from ${PI_CONFIG}"
 fi
 
-OLD_IDS=$(sudo docker ps -aq --filter "ancestor=${IMAGE}" 2>/dev/null || true)
+OLD_IDS=$(${DOCKER_BIN} ps -aq --filter "ancestor=${IMAGE}" 2>/dev/null || true)
 if [[ -n "${OLD_IDS}" ]]; then
   echo "[run.sh] stopping old containers: ${OLD_IDS}"
-  sudo docker rm -f ${OLD_IDS} >/dev/null 2>&1 || true
+  ${DOCKER_BIN} rm -f ${OLD_IDS} >/dev/null 2>&1 || true
 fi
-sudo docker rm -f "${NAME}" >/dev/null 2>&1 || true
+${DOCKER_BIN} rm -f "${NAME}" >/dev/null 2>&1 || true
 
 echo "[run.sh] starting ${NAME} ..."
-sudo docker run -d --name "${NAME}" \
+${DOCKER_BIN} run -d --name "${NAME}" \
   -p ${PI_WEB_HOST_PORT:-6079}:6079 \
   -p 6080:6080 -p 5901:5901 \
   -p 49983:49983 -p 49999:49999 \
@@ -53,17 +54,17 @@ sudo docker run -d --name "${NAME}" \
 sleep 5
 
 echo "[run.sh] ensuring VNC stack ..."
-if sudo docker exec "${NAME}" test -x /etc/cont-init.d/99-browser-vnc 2>/dev/null; then
-  sudo docker exec "${NAME}" /etc/cont-init.d/99-browser-vnc || true
+if ${DOCKER_BIN} exec "${NAME}" test -x /etc/cont-init.d/99-browser-vnc 2>/dev/null; then
+  ${DOCKER_BIN} exec "${NAME}" /etc/cont-init.d/99-browser-vnc || true
 fi
 
 sleep 2
 
 echo "[run.sh] ensuring Multica daemon ..."
-if sudo docker exec "${NAME}" test -x /entrypoint-multica-daemon.sh 2>/dev/null \
-  && sudo docker exec "${NAME}" sh -lc 'test -n "$MULTICA_SERVER_URL" && test -n "$MULTICA_APP_URL" && test -n "$MULTICA_WORKSPACE_ID" && test -n "$MULTICA_TOKEN"' 2>/dev/null; then
-  if ! sudo docker exec "${NAME}" pgrep -f "multica.*daemon start --foreground" >/dev/null 2>&1; then
-    sudo docker exec -d -u user "${NAME}" /entrypoint-multica-daemon.sh || true
+if ${DOCKER_BIN} exec "${NAME}" test -x /entrypoint-multica-daemon.sh 2>/dev/null \
+  && ${DOCKER_BIN} exec "${NAME}" sh -lc 'test -n "$MULTICA_SERVER_URL" && test -n "$MULTICA_APP_URL" && test -n "$MULTICA_WORKSPACE_ID" && test -n "$MULTICA_TOKEN"' 2>/dev/null; then
+  if ! ${DOCKER_BIN} exec "${NAME}" pgrep -f "multica.*daemon start --foreground" >/dev/null 2>&1; then
+    ${DOCKER_BIN} exec -d "${NAME}" /entrypoint-multica-daemon.sh || true
   fi
 fi
 
@@ -73,6 +74,6 @@ echo "=========================================="
 echo "  Pi Web: http://${HOST_IP}:${PI_WEB_HOST_PORT:-6079}/"
 echo "  noVNC:  http://${HOST_IP}:6080/"
 echo "  VNC:    ${HOST_IP}:5901"
-echo "  logs:   sudo docker logs -f ${NAME}"
-echo "  shell:  sudo docker exec -it ${NAME} bash"
+echo "  logs:   ${DOCKER_BIN} logs -f ${NAME}"
+echo "  shell:  ${DOCKER_BIN} exec -it ${NAME} bash"
 echo "=========================================="

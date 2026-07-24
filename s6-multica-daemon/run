@@ -1,9 +1,0 @@
-#!/command/with-contenv bash
-# Multica daemon; runs as sandbox user.
-if command -v s6-setuidgid >/dev/null 2>&1; then
-  exec s6-setuidgid user /entrypoint-multica-daemon.sh
-fi
-if command -v runuser >/dev/null 2>&1; then
-  exec runuser -u user -- /entrypoint-multica-daemon.sh
-fi
-exec su -s /bin/bash user -c 'exec /entrypoint-multica-daemon.sh'

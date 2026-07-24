@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 TAG="${TAG:-cube-leagent-template:local}"
-SANDBOX_IMAGE="${SANDBOX_IMAGE:-cube-sandbox-image.tencentcloudcr.com/demo/e2b-code-interpreter:v1.1-data}"
+SANDBOX_IMAGE="${SANDBOX_IMAGE:-cube-sandbox-cn.tencentcloudcr.com/cube-sandbox/sandbox-code@sha256:b551b169de85c0216cce9453a8e22059ca47fd3dceced75e918cf1c8de60464b}"
 PI_CONFIG="${PI_CONFIG:-config/pi.env}"
 MULTICA_CONTEXT_DIR="multica/bin"
 MULTICA_CONTEXT_BIN="${MULTICA_CONTEXT_DIR}/multica"
@@ -81,6 +81,7 @@ download_multica_release() {
 
 EXTRA=(
   --build-arg "SANDBOX_IMAGE=${SANDBOX_IMAGE}"
+  --build-arg "NODE_MAJOR=${NODE_MAJOR:-22}"
 )
 [[ -n "${NOVNC_ARCHIVE_URL:-}" ]] && EXTRA+=(--build-arg "NOVNC_ARCHIVE_URL=${NOVNC_ARCHIVE_URL}")
 

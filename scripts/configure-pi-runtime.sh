@@ -6,15 +6,15 @@ set -euo pipefail
 
 log() { echo "[configure-pi-runtime] $*"; }
 
-PI_USER="${PI_USER:-user}"
-PI_HOME="${PI_HOME:-/home/${PI_USER}}"
+PI_USER="${PI_USER:-root}"
+PI_HOME="${PI_HOME:-/root}"
 AGENT_DIR="${PI_AGENT_DIR:-${PI_HOME}/.pi/agent}"
 MODELS_FILE="${AGENT_DIR}/models.json"
 SETTINGS_FILE="${AGENT_DIR}/settings.json"
 TEAM_BASE_URL="${TEAM_BASE_URL:-https://claude-code.club/openai/v1}"
 TEAM_MODEL="${TEAM_MODEL:-gpt-5.5}"
 TEAM_PROVIDER="${TEAM_PROVIDER:-openai}"
-AREAL_BASE_URL="${AREAL_BASE_URL:-http://10.110.158.143:9100/v1}"
+AREAL_BASE_URL="${AREAL_BASE_URL:-http://10.110.158.143:9100}"
 AREAL_API="${AREAL_API:-openai-completions}"
 AREAL_API_KEY="${AREAL_API_KEY:-bridge}"
 BRIDGE_USER_ID="${BRIDGE_USER_ID:-}"
@@ -53,7 +53,7 @@ function readJson(path) {
 
 function buildAreal() {
   return {
-    baseUrl: process.env.AREAL_BASE_URL || "http://10.110.158.143:9100/v1",
+    baseUrl: process.env.AREAL_BASE_URL || "http://10.110.158.143:9100",
     api: process.env.AREAL_API || "openai-completions",
     apiKey: process.env.AREAL_API_KEY || "bridge",
     headers: {
@@ -181,7 +181,7 @@ def read_json(path: Path):
 
 def build_areal():
     return {
-        "baseUrl": os.environ.get("AREAL_BASE_URL", "http://10.110.158.143:9100/v1"),
+        "baseUrl": os.environ.get("AREAL_BASE_URL", "http://10.110.158.143:9100"),
         "api": os.environ.get("AREAL_API", "openai-completions"),
         "apiKey": os.environ.get("AREAL_API_KEY", "bridge"),
         "headers": {
@@ -279,7 +279,7 @@ else
   exit 1
 fi
 
-if [[ "$(id -u)" == "0" ]] && id "${PI_USER}" >/dev/null 2>&1; then
+if [[ "$(id -u)" == "0" ]] && [[ "${PI_USER}" != "root" ]] && id "${PI_USER}" >/dev/null 2>&1; then
   chown -R "${PI_USER}:${PI_USER}" "${AGENT_DIR}"
 fi
 

@@ -2,8 +2,8 @@
 # Start the Pi web bridge. It exposes a browser UI backed by `pi --mode rpc`.
 set -euo pipefail
 
-export HOME="${HOME:-/home/user}"
-export PATH="/home/user/.npm-global/bin:/home/user/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
+export HOME="${HOME:-/root}"
+export PATH="/root/.npm-global/bin:/root/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
 export PI_WEB_HOST="${PI_WEB_HOST:-0.0.0.0}"
 export PI_WEB_PORT="${PI_WEB_PORT:-6079}"
 export PI_WEB_WORKSPACE="${PI_WEB_WORKSPACE:-/workspace}"

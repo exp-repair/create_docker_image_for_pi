@@ -39,7 +39,8 @@ test -x /entrypoint-multica-daemon.sh
 test -x /entrypoint-pi-web.sh
 test -x /usr/local/bin/multica
 test -f /opt/pi-web/server.js
-command -v pi >/dev/null 2>&1 || test -x /home/user/.npm-global/bin/pi
+command -v pi >/dev/null 2>&1 || test -x /root/.npm-global/bin/pi
+! id user >/dev/null 2>&1
 '
 
 docker inspect "${SOURCE_IMAGE}" --format '[create-cube-template] image={{.Id}} entrypoint={{json .Config.Entrypoint}} workdir={{.Config.WorkingDir}}'

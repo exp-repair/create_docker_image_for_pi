@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Configure and start the Multica daemon in the foreground under s6.
+# Configure and start the Multica daemon in the foreground.
 set -euo pipefail
 
 log() { echo "[entrypoint-multica-daemon] $*"; }
 
-export HOME="${HOME:-/home/user}"
+export HOME="${HOME:-/root}"
+export PATH="/root/.npm-global/bin:/root/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
 MULTICA_BIN="${MULTICA_BIN:-/usr/local/bin/multica}"
 MULTICA_PROFILE="${MULTICA_PROFILE:-}"
 MULTICA_DAEMON_ENABLED="${MULTICA_DAEMON_ENABLED:-1}"

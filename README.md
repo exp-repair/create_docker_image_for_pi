@@ -1,49 +1,57 @@
-# Cube / E2B sandbox template (Leagent-aligned)
+# Cube sandbox slim image
 
-Docker overlay for Cube `sandbox-code` / `e2b-code-interpreter` images. Matches
-Leagent's River (Daytona) sandbox contracts without changing backend code.
+Slim Docker image for Cube sandboxes that need db-bridge-routed LLM calls,
+Multica daemon, Pi, Chromium/Playwright, Xvfb, VNC/noVNC, and the basic Cube
+code-interpreter API.
 
 ## What this image provides
 
 | Contract | Value |
-|----------|--------|
+| --- | --- |
+| Base | `cube-sandbox-cn.tencentcloudcr.com/cube-sandbox/sandbox-code` |
 | Workspace | `/workspace`, `/workspace/uploads`, `/workspace/browser-shots` |
-| Display | `DISPLAY=:0` (Xvfb) |
-| Browser | System `/usr/bin/chromium`, CDP `127.0.0.1:9223` (Leagent bootstraps on demand) |
-| Live view | VNC `:5901`, noVNC `:6080` (same probes as Daytona Computer Use) |
-| E2B APIs | `:49983` envd, `:49999` code interpreter (from base image) |
+| Code API | `:49999` from the lightweight Cube code interpreter |
+| envd | `:49983` from the base image |
+| Display | `DISPLAY=:0`, Xvfb desktop |
+| Browser | System `/usr/bin/chromium`, CDP `:9223` |
+| Live view | VNC `:5901`, noVNC `:6080` |
+| Pi | `/usr/local/bin/pi` plus `@lebronj/pi-suite` |
+| Multica | `/usr/local/bin/multica` daemon runtime helpers |
 
-Removed vs earlier template: resident `demo.js` / FastAPI `server.py`, duplicate
-Playwright browser downloads, `tesseract`, `wkhtmltopdf`, redundant Chromium libs,
-debug packages (`ping`, `dnsutils`, `lsof`, `tigervnc-tools`), duplicate fonts.
+The image intentionally does **not** run or bundle the db_bridge Python service.
+The bridge stub/executor should keep running on the host or service machines.
+Inside the sandbox, Pi is configured to call the host bridge stub through the
+`areal` provider using `AREAL_BASE_URL` and `BRIDGE_USER_ID`.
 
-**Not installed here** (expected from `e2b-code-interpreter` base): `git`, `tmux`,
-`bash`, `wget`, `python3`, Node, `sudo`, coreutils (`grep`/`sed`).
+All account-scoped tools and configs live under root (`/root/.npm-global`,
+`/root/.pi`, `/root/.multica`). The inherited non-root `user` account is removed
+from the final image to avoid split runtime state.
 
 ## Build locally
 
 ```bash
-cd backend/core/sandbox/cube/docker_container
 ./scripts/build.sh
-# optional: SANDBOX_IMAGE=... NOVNC_ARCHIVE_URL=... ./scripts/build.sh
 ```
 
-Pi CLI is installed during image build, but `TEAM_API_KEY`, `TEAM_BASE_URL`, and
-`TEAM_MODEL` are not baked into the image. Pass them when the container starts.
-
-The image includes the Multica CLI/daemon binary. `./scripts/build.sh`
-downloads the latest GitHub Release on the host into `multica/bin/multica`,
-then copies it into the image (so Docker build does not need GitHub access).
+Useful build overrides:
 
 ```bash
-./scripts/build.sh
-# reuse previously downloaded binary:
+# Reuse a previously downloaded Multica binary.
 MULTICA_SKIP_DOWNLOAD=1 ./scripts/build.sh
-# or use an existing local binary:
+
+# Use an existing local Multica binary.
 MULTICA_LOCAL_BIN=/usr/local/bin/multica ./scripts/build.sh
+
+# Change image tag or base image.
+TAG=cube-leagent-template:slim \
+SANDBOX_IMAGE=cube-sandbox-cn.tencentcloudcr.com/cube-sandbox/sandbox-code@sha256:b551b169de85c0216cce9453a8e22059ca47fd3dceced75e918cf1c8de60464b \
+./scripts/build.sh
 ```
 
-## Run locally (smoke test)
+Pi and Multica credentials are not baked into the image. Pass them when the
+container or Cube sandbox starts.
+
+## Run locally
 
 ```bash
 cp config/pi.env.example config/pi.env
@@ -52,46 +60,54 @@ cp config/pi.env.example config/pi.env
 ./scripts/diagnose.sh
 ```
 
-You can also pass runtime values directly:
+For db-bridge, point Pi at the host bridge stub. The current multica-side stub
+serves `/chat/completions`, so the default base URL has no `/v1` suffix:
 
 ```bash
-TEAM_API_KEY=... TEAM_BASE_URL=https://... TEAM_MODEL=gpt-5.5 \
-MULTICA_SERVER_URL=http://10.110.158.143:8081 \
-MULTICA_APP_URL=http://10.110.158.143:3001 \
-MULTICA_WORKSPACE_ID=... MULTICA_TOKEN=... \
-./scripts/run.sh
+AREAL_BASE_URL=http://10.110.158.143:9100
+BRIDGE_USER_ID=<same user id used by db_bridge_stub/executor>
 ```
 
-Inside the container:
+Inside the container, useful checks are:
 
 ```bash
-ls -la /workspace /workspace/uploads
-touch /workspace/uploads/test.txt
-command -v chromium rg
-DISPLAY=:0 xdpyinfo | head
-```
-
-After Leagent browser bootstrap (or manual):
-
-```bash
-curl -sf http://127.0.0.1:9223/json/version
+curl -sf http://127.0.0.1:49999/health
+curl -sf http://127.0.0.1:6080/
+command -v chromium pi multica rg fd
+python3 - <<'PY'
+from playwright.sync_api import sync_playwright
+print('playwright ok')
+PY
 ```
 
 ## Publish to Cube
 
-1. Build and push the image to your registry.
-2. Register it as an E2B/Cube template (`tpl-...`).
-3. Set `CUBE_TEMPLATE_ID` in `backend/.env` and `backend/core/infra/sandbox/provider/cube/.env`.
-4. Restart workers and create a **new** sandbox (old sandboxes keep the old template).
+```bash
+./scripts/create-cube-template.sh
+```
 
-## Relation to Daytona River
+The template creation script exposes Pi web `6079`, noVNC `6080`, and Chromium
+CDP `9223`, then probes the Code API on `49999/health`.
 
-| | Daytona River | This template |
-|--|---------------|---------------|
-| Build | `backend/core/sandbox/create_daytona_snapshot.py` | `docker build` → Cube template |
-| Base | `daytonaio/sandbox:0.6.0` | `e2b-code-interpreter` / `sandbox-code` |
-| Dockerfile | `backend/core/sandbox/docker/Dockerfile` | this directory |
+If Cube sandboxes must reach the host db_bridge stubs on `:9100` / `:9101` /
+`:9102`, keep the host bridge using `network_mode: host`, include the host LAN
+IP in `ALLOW_OUT_CIDRS`, and apply the db_bridge tap/hairpin rules on the Cube
+node when needed:
 
-Python tools (`playwright`, `pypdf`, `python-pptx`) and document CLI packages mirror River.
-Presentation export CLI (`river-export-slides`) is not bundled here; add it to this
-directory if you need full slide/PDF parity on Cube.
+```bash
+cd /home/jian40/multica/db_bridge
+sudo scripts/cube-tap-tproxy-init.sh up
+# optional override:
+# CUBE_TPROXY_BRIDGE_PORTS="9100 9101 9102" sudo scripts/cube-tap-tproxy-init.sh up
+```
+
+## Runtime scripts
+
+- `scripts/cube-start.sh` starts VNC/noVNC/Pi web helpers, optionally starts
+  Multica when `MULTICA_AUTOSTART=1`, then execs the base lightweight Code API.
+- `scripts/configure-pi-runtime.sh` writes Pi `models.json` and `settings.json`,
+  including the `areal` db-bridge provider.
+- `scripts/start-multica-runtime.sh` dynamically configures Pi/Multica inside an
+  already-created sandbox and starts the Multica daemon in the background.
+- `scripts/create-runtime-sandbox.sh` creates a Cube sandbox, injects runtime
+  env, and invokes `start-multica-runtime.sh` through the Cube `/execute` API.

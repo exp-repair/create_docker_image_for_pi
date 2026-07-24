@@ -12,7 +12,7 @@ const PORT = Number(process.env.PI_WEB_PORT || 6079);
 const WORKSPACE_DIR = process.env.PI_WEB_WORKSPACE || process.env.PI_WORKSPACE_DIR || "/workspace";
 const PI_BIN = process.env.PI_BIN || "pi";
 const PUBLIC_DIR = path.join(__dirname, "public");
-const AGENT_DIR = process.env.PI_AGENT_DIR || path.join(process.env.HOME || "/home/user", ".pi", "agent");
+const AGENT_DIR = process.env.PI_AGENT_DIR || path.join(process.env.HOME || "/root", ".pi", "agent");
 const SESSIONS_ROOT = path.join(AGENT_DIR, "sessions");
 const MODELS_FILE = path.join(AGENT_DIR, "models.json");
 const SETTINGS_FILE = path.join(AGENT_DIR, "settings.json");
@@ -518,7 +518,7 @@ function startRpc() {
   if (process.env.PI_WEB_SESSION_DIR) args.push("--session-dir", process.env.PI_WEB_SESSION_DIR);
   rpc = spawn(PI_BIN, args, {
     cwd: WORKSPACE_DIR,
-    env: { ...process.env, HOME: process.env.HOME || "/home/user", PI_SKIP_VERSION_CHECK: process.env.PI_SKIP_VERSION_CHECK || "1" },
+    env: { ...process.env, HOME: process.env.HOME || "/root", PI_SKIP_VERSION_CHECK: process.env.PI_SKIP_VERSION_CHECK || "1" },
     stdio: ["pipe", "pipe", "pipe"],
   });
 

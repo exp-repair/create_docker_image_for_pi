@@ -1,9 +1,0 @@
-#!/usr/bin/env sh
-set -eu
-if command -v s6-setuidgid >/dev/null 2>&1; then
-  exec s6-setuidgid user /entrypoint-pi-web.sh
-fi
-if command -v runuser >/dev/null 2>&1; then
-  exec runuser -u user -- /entrypoint-pi-web.sh
-fi
-exec su -s /bin/bash user -c 'exec /entrypoint-pi-web.sh'

@@ -4,8 +4,8 @@ set -euo pipefail
 
 log() { echo "[configure-multica-runtime] $*"; }
 
-MULTICA_USER="${MULTICA_USER:-user}"
-MULTICA_HOME="${MULTICA_HOME:-/home/${MULTICA_USER}}"
+MULTICA_USER="${MULTICA_USER:-root}"
+MULTICA_HOME="${MULTICA_HOME:-/root}"
 MULTICA_PROFILE="${MULTICA_PROFILE:-}"
 
 if [[ -n "${MULTICA_PROFILE}" ]]; then
@@ -86,7 +86,7 @@ else
 fi
 
 chmod 600 "${CONFIG_FILE}"
-if [[ "$(id -u)" == "0" ]] && id "${MULTICA_USER}" >/dev/null 2>&1; then
+if [[ "$(id -u)" == "0" ]] && [[ "${MULTICA_USER}" != "root" ]] && id "${MULTICA_USER}" >/dev/null 2>&1; then
   chown -R "${MULTICA_USER}:${MULTICA_USER}" "${MULTICA_HOME}/.multica"
 fi
 
