@@ -13,6 +13,11 @@ CUBE_PROXY_HTTP="${CUBE_PROXY_HTTP:-http://127.0.0.1}"
 CUBE_TEMPLATE_ID="${CUBE_TEMPLATE_ID:-tpl-17d5b530e726456691304136}"
 CUBE_SANDBOX_TIMEOUT="${CUBE_SANDBOX_TIMEOUT:-3600}"
 PI_CONFIG="${PI_CONFIG:-config/pi.env}"
+HOST_IP="${HOST_IP:-$(hostname -I 2>/dev/null | awk '{print $1}')}"
+HOST_PROXY_PORT="${HOST_PROXY_PORT:-7893}"
+ENABLE_SANDBOX_HOST_PROXY="${ENABLE_SANDBOX_HOST_PROXY:-0}"
+SANDBOX_PROXY_URL="${SANDBOX_PROXY_URL:-}"
+SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY:-localhost,127.0.0.1,::1,${HOST_IP},10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc,.cluster.local}"
 
 if [[ -f "${PI_CONFIG}" ]]; then
   # shellcheck disable=SC1090
@@ -20,6 +25,11 @@ if [[ -f "${PI_CONFIG}" ]]; then
   source "${PI_CONFIG}"
   set +a
 fi
+
+if [[ -z "${SANDBOX_PROXY_URL}" && "${ENABLE_SANDBOX_HOST_PROXY}" == "1" ]]; then
+  SANDBOX_PROXY_URL="http://${HOST_IP}:${HOST_PROXY_PORT}"
+fi
+export SANDBOX_PROXY_URL SANDBOX_NO_PROXY
 
 required=(TEAM_API_KEY TEAM_BASE_URL TEAM_MODEL MULTICA_SERVER_URL MULTICA_APP_URL MULTICA_WORKSPACE_ID MULTICA_TOKEN)
 missing=()
@@ -71,6 +81,18 @@ runtime_env = {
     "MULTICA_TOKEN": os.environ["MULTICA_TOKEN"],
     "MULTICA_DAEMON_ENABLED": os.environ.get("MULTICA_DAEMON_ENABLED", "1"),
 }
+proxy_url = os.environ.get("SANDBOX_PROXY_URL", "")
+if proxy_url:
+    runtime_env.update({
+        "HTTP_PROXY": proxy_url,
+        "HTTPS_PROXY": proxy_url,
+        "ALL_PROXY": proxy_url,
+        "http_proxy": proxy_url,
+        "https_proxy": proxy_url,
+        "all_proxy": proxy_url,
+        "NO_PROXY": os.environ.get("SANDBOX_NO_PROXY", "localhost,127.0.0.1,::1"),
+        "no_proxy": os.environ.get("SANDBOX_NO_PROXY", "localhost,127.0.0.1,::1"),
+    })
 for optional_key in ("BRIDGE_USER_ID", "AREAL_BASE_URL", "AREAL_API", "AREAL_API_KEY", "MULTICA_PROFILE"):
     if os.environ.get(optional_key):
         runtime_env[optional_key] = os.environ[optional_key]

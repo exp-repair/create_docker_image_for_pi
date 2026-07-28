@@ -12,16 +12,40 @@ PROBE_PORT="${PROBE_PORT:-49999}"
 PROBE_PATH="${PROBE_PATH:-/health}"
 WATCH_TEMPLATE="${WATCH_TEMPLATE:-1}"
 OUTPUT_ENV_FILE="${OUTPUT_ENV_FILE:-.cube-template.env}"
+PI_CONFIG="${PI_CONFIG:-config/pi.env}"
+
+log() { echo "[create-cube-template] $*"; }
+die() { echo "[create-cube-template] ERROR: $*" >&2; exit 1; }
+
+# Let config/pi.env provide non-secret template defaults such as sandbox proxy.
+# Command-line environment variables still take priority over config values.
+ENV_HOST_IP="${HOST_IP:-}"
+ENV_CUBE_DEV_GATEWAY="${CUBE_DEV_GATEWAY:-}"
+ENV_ALLOW_OUT_CIDRS="${ALLOW_OUT_CIDRS:-}"
+ENV_HOST_PROXY_PORT="${HOST_PROXY_PORT:-}"
+ENV_ENABLE_SANDBOX_HOST_PROXY="${ENABLE_SANDBOX_HOST_PROXY:-}"
+ENV_SANDBOX_PROXY_URL="${SANDBOX_PROXY_URL:-}"
+ENV_SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY:-}"
+if [[ -f "${PI_CONFIG}" ]]; then
+  # shellcheck disable=SC1090
+  source "${PI_CONFIG}"
+  log "loaded template config from ${PI_CONFIG}"
+fi
 
 # Space- or comma-separated CIDRs to allow at template network level.
 # Default: cube-dev gateway (192.168.0.1) + primary host IP.
 # Override: ALLOW_OUT_CIDRS="192.168.0.1/32 10.110.158.143/32" scripts/create-cube-template.sh
-HOST_IP="${HOST_IP:-$(hostname -I 2>/dev/null | awk '{print $1}')}"
-CUBE_DEV_GATEWAY="${CUBE_DEV_GATEWAY:-192.168.0.1}"
-ALLOW_OUT_CIDRS="${ALLOW_OUT_CIDRS:-${CUBE_DEV_GATEWAY}/32 ${HOST_IP}/32}"
+HOST_IP="${ENV_HOST_IP:-${HOST_IP:-$(hostname -I 2>/dev/null | awk '{print $1}')}}"
+CUBE_DEV_GATEWAY="${ENV_CUBE_DEV_GATEWAY:-${CUBE_DEV_GATEWAY:-192.168.0.1}}"
+ALLOW_OUT_CIDRS="${ENV_ALLOW_OUT_CIDRS:-${ALLOW_OUT_CIDRS:-${CUBE_DEV_GATEWAY}/32 ${HOST_IP}/32}}"
+HOST_PROXY_PORT="${ENV_HOST_PROXY_PORT:-${HOST_PROXY_PORT:-7893}}"
+ENABLE_SANDBOX_HOST_PROXY="${ENV_ENABLE_SANDBOX_HOST_PROXY:-${ENABLE_SANDBOX_HOST_PROXY:-0}}"
+SANDBOX_PROXY_URL="${ENV_SANDBOX_PROXY_URL:-${SANDBOX_PROXY_URL:-}}"
+SANDBOX_NO_PROXY="${ENV_SANDBOX_NO_PROXY:-${SANDBOX_NO_PROXY:-localhost,127.0.0.1,::1,${HOST_IP},${CUBE_DEV_GATEWAY},10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc,.cluster.local}}"
 
-log() { echo "[create-cube-template] $*"; }
-die() { echo "[create-cube-template] ERROR: $*" >&2; exit 1; }
+if [[ -z "${SANDBOX_PROXY_URL}" && "${ENABLE_SANDBOX_HOST_PROXY}" == "1" ]]; then
+  SANDBOX_PROXY_URL="http://${HOST_IP}:${HOST_PROXY_PORT}"
+fi
 
 command -v docker >/dev/null 2>&1 || die "docker is required"
 [[ -x "${CUBEMASTER_CLI}" ]] || die "cubemastercli not found or not executable: ${CUBEMASTER_CLI}"
@@ -56,6 +80,22 @@ else
   log "WARN: ALLOW_OUT_CIDRS is empty; sandboxes cannot reach host services by IP"
 fi
 
+proxy_env_args=()
+if [[ -n "${SANDBOX_PROXY_URL}" ]]; then
+  proxy_env_args+=(
+    --env "HTTP_PROXY=${SANDBOX_PROXY_URL}"
+    --env "HTTPS_PROXY=${SANDBOX_PROXY_URL}"
+    --env "ALL_PROXY=${SANDBOX_PROXY_URL}"
+    --env "http_proxy=${SANDBOX_PROXY_URL}"
+    --env "https_proxy=${SANDBOX_PROXY_URL}"
+    --env "all_proxy=${SANDBOX_PROXY_URL}"
+    --env "NO_PROXY=${SANDBOX_NO_PROXY}"
+    --env "no_proxy=${SANDBOX_NO_PROXY}"
+  )
+  log "sandbox proxy: ${SANDBOX_PROXY_URL}"
+  log "sandbox no_proxy: ${SANDBOX_NO_PROXY}"
+fi
+
 create_args=(
   template create-from-image
   --image "${SOURCE_IMAGE}"
@@ -77,6 +117,7 @@ create_args=(
   --env 'PI_WEB_HOST=0.0.0.0'
   --env 'PI_WEB_PORT=6079'
   --env 'PI_WEB_WORKSPACE=/workspace'
+  "${proxy_env_args[@]}"
   "${allow_args[@]}"
   --json
 )
@@ -105,12 +146,18 @@ if [[ "${WATCH_TEMPLATE}" == "1" ]]; then
   "${CUBEMASTER_CLI}" template watch --job-id "${CUBE_TEMPLATE_JOB_ID}" --interval 5s --json
 fi
 
-cat > "${OUTPUT_ENV_FILE}" <<EOF
+{
+  cat <<EOF
 CUBE_TEMPLATE_ID=${CUBE_TEMPLATE_ID}
 CUBE_TEMPLATE_JOB_ID=${CUBE_TEMPLATE_JOB_ID}
 SOURCE_IMAGE=${SOURCE_IMAGE}
 ALLOW_OUT_CIDRS="${ALLOW_OUT_CIDRS}"
 EOF
+  if [[ -n "${SANDBOX_PROXY_URL}" ]]; then
+    printf 'SANDBOX_PROXY_URL="%s"\n' "${SANDBOX_PROXY_URL}"
+    printf 'SANDBOX_NO_PROXY="%s"\n' "${SANDBOX_NO_PROXY}"
+  fi
+} > "${OUTPUT_ENV_FILE}"
 
 log "wrote ${OUTPUT_ENV_FILE}"
 echo "CUBE_TEMPLATE_ID=${CUBE_TEMPLATE_ID}"

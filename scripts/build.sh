@@ -83,6 +83,11 @@ EXTRA=(
   --build-arg "SANDBOX_IMAGE=${SANDBOX_IMAGE}"
   --build-arg "NODE_MAJOR=${NODE_MAJOR:-22}"
 )
+for proxy_key in HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy; do
+  if [[ -n "${!proxy_key:-}" ]]; then
+    EXTRA+=(--build-arg "${proxy_key}=${!proxy_key}")
+  fi
+done
 [[ -n "${NOVNC_ARCHIVE_URL:-}" ]] && EXTRA+=(--build-arg "NOVNC_ARCHIVE_URL=${NOVNC_ARCHIVE_URL}")
 
 if [[ -n "${MULTICA_LOCAL_BIN:-}" ]]; then

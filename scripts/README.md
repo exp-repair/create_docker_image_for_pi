@@ -16,8 +16,8 @@ Cube template/sandbox, and configuring Pi + Multica at runtime.
 
 | Script | Purpose |
 | --- | --- |
-| `build.sh` | Downloads or reuses the Multica binary, then builds the image. Defaults to `cube-sandbox-cn.tencentcloudcr.com/cube-sandbox/sandbox-code@sha256:b551...`. Supports `TAG`, `SANDBOX_IMAGE`, `NODE_MAJOR`, `INSTALL_PI`, `PI_SUITE_VERSION`, `NPM_REGISTRY`, `MULTICA_SKIP_DOWNLOAD`, and `MULTICA_LOCAL_BIN`. |
-| `run.sh` | Runs the image locally, maps `6079`, `6080`, `5901`, `49983`, `49999`, and passes `TEAM_*`, `AREAL_*`, `BRIDGE_USER_ID`, and `MULTICA_*` runtime env values. Uses `DOCKER_BIN` when set. |
+| `build.sh` | Downloads or reuses the Multica binary, then builds the image. Defaults to `cube-sandbox-cn.tencentcloudcr.com/cube-sandbox/sandbox-code@sha256:b551...`. Supports `TAG`, `SANDBOX_IMAGE`, `NODE_MAJOR`, `INSTALL_PI`, `PI_SUITE_VERSION`, `NPM_REGISTRY`, `MULTICA_SKIP_DOWNLOAD`, `MULTICA_LOCAL_BIN`, and standard proxy build args. |
+| `run.sh` | Runs the image locally, maps `6079`, `6080`, `5901`, `49983`, `49999`, and passes `TEAM_*`, `AREAL_*`, `BRIDGE_USER_ID`, `MULTICA_*`, and optional sandbox proxy env values. Uses `DOCKER_BIN` when set. |
 | `diagnose.sh` | Prints container state, listening ports, important binaries, Pi/Multica versions, and host HTTP checks. Uses `DOCKER_BIN` when set. |
 | `create-cube-template.sh` | Converts the image into a Cube template, exposing `6079`, `6080`, and `9223`, probing `49999/health`, and writing `.cube-template.env`. |
 | `create-runtime-sandbox.sh` | Creates a Cube sandbox and invokes `start-multica-runtime.sh` through `/execute` to configure Pi/Multica after creation. |
@@ -43,6 +43,7 @@ Cube template/sandbox, and configuring Pi + Multica at runtime.
 | `MULTICA_DAEMON_ENABLED` | `1` to run the daemon, `0` to keep it disabled. |
 | `MULTICA_AUTOSTART` | `1` to start Multica during container entrypoint; otherwise use `start-multica-runtime.sh`. |
 | `CUBE_TEMPLATE_ID`, `CUBE_API_URL`, `CUBE_PROXY_HTTP` | Cube runtime sandbox creation settings. |
+| `ENABLE_SANDBOX_HOST_PROXY`, `HOST_PROXY_PORT`, `SANDBOX_PROXY_URL`, `SANDBOX_NO_PROXY` | Optional host-proxy settings for sandbox egress; use the host sing-box mixed proxy on `:7893`. |
 
 ## Notes
 

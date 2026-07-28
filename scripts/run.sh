@@ -6,6 +6,10 @@ IMAGE="${IMAGE:-cube-leagent-template:local}"
 NAME="${NAME:-cube-leagent}"
 PI_CONFIG="${PI_CONFIG:-config/pi.env}"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
+HOST_PROXY_PORT="${HOST_PROXY_PORT:-7893}"
+ENABLE_SANDBOX_HOST_PROXY="${ENABLE_SANDBOX_HOST_PROXY:-0}"
+SANDBOX_PROXY_URL="${SANDBOX_PROXY_URL:-}"
+SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY:-localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}"
 
 if [[ -f "${PI_CONFIG}" ]]; then
   # shellcheck disable=SC1090
@@ -13,6 +17,27 @@ if [[ -f "${PI_CONFIG}" ]]; then
   source "${PI_CONFIG}"
   set +a
   echo "[run.sh] loaded runtime Pi config from ${PI_CONFIG}"
+fi
+
+if [[ -z "${SANDBOX_PROXY_URL}" && "${ENABLE_SANDBOX_HOST_PROXY}" == "1" ]]; then
+  SANDBOX_PROXY_URL="http://host.docker.internal:${HOST_PROXY_PORT}"
+fi
+
+DOCKER_EXTRA_ARGS=()
+if [[ -n "${SANDBOX_PROXY_URL}" ]]; then
+  DOCKER_EXTRA_ARGS+=(
+    -e "HTTP_PROXY=${SANDBOX_PROXY_URL}"
+    -e "HTTPS_PROXY=${SANDBOX_PROXY_URL}"
+    -e "ALL_PROXY=${SANDBOX_PROXY_URL}"
+    -e "http_proxy=${SANDBOX_PROXY_URL}"
+    -e "https_proxy=${SANDBOX_PROXY_URL}"
+    -e "all_proxy=${SANDBOX_PROXY_URL}"
+    -e "NO_PROXY=${SANDBOX_NO_PROXY}"
+    -e "no_proxy=${SANDBOX_NO_PROXY}"
+  )
+  if [[ "${SANDBOX_PROXY_URL}" == *host.docker.internal* ]]; then
+    DOCKER_EXTRA_ARGS+=(--add-host=host.docker.internal:host-gateway)
+  fi
 fi
 
 OLD_IDS=$(${DOCKER_BIN} ps -aq --filter "ancestor=${IMAGE}" 2>/dev/null || true)
@@ -48,6 +73,7 @@ ${DOCKER_BIN} run -d --name "${NAME}" \
   ${MULTICA_TOKEN:+-e MULTICA_TOKEN="${MULTICA_TOKEN}"} \
   ${MULTICA_PROFILE:+-e MULTICA_PROFILE="${MULTICA_PROFILE}"} \
   -e MULTICA_DAEMON_ENABLED="${MULTICA_DAEMON_ENABLED:-1}" \
+  "${DOCKER_EXTRA_ARGS[@]}" \
   --shm-size=2g \
   "${IMAGE}" "$@"
 

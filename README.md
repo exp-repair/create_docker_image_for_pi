@@ -101,6 +101,38 @@ sudo scripts/cube-tap-tproxy-init.sh up
 # CUBE_TPROXY_BRIDGE_PORTS="9100 9101 9102" sudo scripts/cube-tap-tproxy-init.sh up
 ```
 
+## Host proxy for sandbox egress
+
+The host currently exposes a sing-box mixed proxy on `:7893`. To make a sandbox
+use that proxy, inject proxy envs and make sure the template allows egress to the
+host LAN IP.
+
+For local Docker runs:
+
+```bash
+ENABLE_SANDBOX_HOST_PROXY=1 ./scripts/run.sh
+# or explicitly:
+# SANDBOX_PROXY_URL=http://host.docker.internal:7893 ./scripts/run.sh
+```
+
+For Cube templates, create a new template with proxy envs baked into the template
+runtime environment:
+
+```bash
+HOST_IP=10.110.158.143 \
+ENABLE_SANDBOX_HOST_PROXY=1 \
+ALLOW_OUT_CIDRS="192.168.0.1/32 10.110.158.143/32" \
+./scripts/create-cube-template.sh
+```
+
+Inside a sandbox, verify with:
+
+```bash
+env | grep -i proxy
+curl -I https://github.com
+curl -I https://www.google.com
+```
+
 ## Runtime scripts
 
 - `scripts/cube-start.sh` starts VNC/noVNC/Pi web helpers, optionally starts
