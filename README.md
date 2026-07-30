@@ -1,8 +1,8 @@
 # Cube sandbox slim image
 
 Slim Docker image for Cube sandboxes that need db-bridge-routed LLM calls,
-Multica daemon, Pi, Chromium/Playwright, Xvfb, VNC/noVNC, and the basic Cube
-code-interpreter API.
+Multica daemon, Pi, Cursor Agent CLI, Chromium/Playwright, Xvfb, VNC/noVNC, and
+the basic Cube code-interpreter API.
 
 ## What this image provides
 
@@ -16,6 +16,7 @@ code-interpreter API.
 | Browser | System `/usr/bin/chromium`, CDP `:9223` |
 | Live view | VNC `:5901`, noVNC `:6080` |
 | Pi | `/usr/local/bin/pi` plus `@lebronj/pi-suite` |
+| Cursor Agent | `/usr/local/bin/cursor-agent` (Multica auto-detects this binary) |
 | Multica | `/usr/local/bin/multica` daemon runtime helpers |
 
 The image intentionally does **not** run or bundle the db_bridge Python service.
@@ -24,8 +25,9 @@ Inside the sandbox, Pi is configured to call the host bridge stub through the
 `areal` provider using `AREAL_BASE_URL` and `BRIDGE_USER_ID`.
 
 All account-scoped tools and configs live under root (`/root/.npm-global`,
-`/root/.pi`, `/root/.multica`). The inherited non-root `user` account is removed
-from the final image to avoid split runtime state.
+`/root/.pi`, `/root/.cursor`, `/root/.multica`, `/root/.local`). The inherited
+non-root `user` account is removed from the final image to avoid split runtime
+state.
 
 ## Build locally
 
@@ -42,20 +44,23 @@ MULTICA_SKIP_DOWNLOAD=1 ./scripts/build.sh
 # Use an existing local Multica binary.
 MULTICA_LOCAL_BIN=/usr/local/bin/multica ./scripts/build.sh
 
+# Skip Cursor Agent CLI install.
+INSTALL_CURSOR=0 ./scripts/build.sh
+
 # Change image tag or base image.
 TAG=cube-leagent-template:slim \
 SANDBOX_IMAGE=cube-sandbox-cn.tencentcloudcr.com/cube-sandbox/sandbox-code@sha256:b551b169de85c0216cce9453a8e22059ca47fd3dceced75e918cf1c8de60464b \
 ./scripts/build.sh
 ```
 
-Pi and Multica credentials are not baked into the image. Pass them when the
-container or Cube sandbox starts.
+Pi, Cursor, and Multica credentials are not baked into the image. Pass them when
+the container or Cube sandbox starts (`TEAM_*`, `CURSOR_API_KEY`, `MULTICA_*`).
 
 ## Run locally
 
 ```bash
 cp config/pi.env.example config/pi.env
-# edit config/pi.env and fill TEAM_* plus MULTICA_* runtime values
+# edit config/pi.env and fill TEAM_* , CURSOR_API_KEY, plus MULTICA_* runtime values
 ./scripts/run.sh
 ./scripts/diagnose.sh
 ```
@@ -73,12 +78,15 @@ Inside the container, useful checks are:
 ```bash
 curl -sf http://127.0.0.1:49999/health
 curl -sf http://127.0.0.1:6080/
-command -v chromium pi multica rg fd
+command -v chromium pi cursor-agent multica rg fd
 python3 - <<'PY'
 from playwright.sync_api import sync_playwright
 print('playwright ok')
 PY
 ```
+
+After Multica daemon starts with `CURSOR_API_KEY` injected, the Multica UI
+Runtimes page should list a Cursor runtime alongside Pi.
 
 ## Publish to Cube
 
@@ -100,6 +108,11 @@ sudo scripts/cube-tap-tproxy-init.sh up
 # optional override:
 # CUBE_TPROXY_BRIDGE_PORTS="9100 9101 9102" sudo scripts/cube-tap-tproxy-init.sh up
 ```
+
+Cursor Agent also needs egress to Cursor API hosts (for example `api2.cursor.sh`).
+If sandboxes use an HTTP proxy and Cursor auth fails, ensure those hosts are in
+`NO_PROXY` (configure-cursor-runtime.sh adds common Cursor API hosts automatically
+when a proxy is present).
 
 ## Host proxy for sandbox egress
 
@@ -139,7 +152,11 @@ curl -I https://www.google.com
   Multica when `MULTICA_AUTOSTART=1`, then execs the base lightweight Code API.
 - `scripts/configure-pi-runtime.sh` writes Pi `models.json` and `settings.json`,
   including the `areal` db-bridge provider.
-- `scripts/start-multica-runtime.sh` dynamically configures Pi/Multica inside an
-  already-created sandbox and starts the Multica daemon in the background.
+- `scripts/configure-cursor-runtime.sh` resolves `cursor-agent`, writes
+  `/root/.cursor/runtime.env` from `CURSOR_API_KEY` / `MULTICA_CURSOR_*`, and
+  adjusts `NO_PROXY` for Cursor API hosts when a proxy is set.
+- `scripts/start-multica-runtime.sh` dynamically configures Pi/Cursor/Multica
+  inside an already-created sandbox and starts the Multica daemon in the
+  background.
 - `scripts/create-runtime-sandbox.sh` creates a Cube sandbox, injects runtime
   env, and invokes `start-multica-runtime.sh` through the Cube `/execute` API.

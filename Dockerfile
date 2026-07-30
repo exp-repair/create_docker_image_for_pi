@@ -8,6 +8,7 @@ FROM ${SANDBOX_IMAGE}
 
 ARG NODE_MAJOR=22
 ARG INSTALL_PI=1
+ARG INSTALL_CURSOR=1
 ARG PI_SUITE_VERSION=0.1.17
 ARG PI_SUITE=npm:@lebronj/pi-suite
 ARG PI_WORKSPACE_DIR=/workspace
@@ -31,7 +32,7 @@ ENV HOME=/root \
     CODE_INTERPRETER_HOST=0.0.0.0 \
     CODE_INTERPRETER_PORT=49999 \
     CODE_INTERPRETER_WORKDIR=/workspace \
-    PATH=/root/.npm-global/bin:/root/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+    PATH=/root/.local/bin:/root/.npm-global/bin:/root/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
 
 # Minimal OS surface for Pi, Multica daemon, db-bridge calls, VNC/noVNC,
 # Chromium, and Playwright-over-system-browser. Avoid doc/debug packages.
@@ -89,6 +90,7 @@ COPY scripts/entrypoint-multica-daemon.sh /entrypoint-multica-daemon.sh
 COPY scripts/entrypoint-pi-web.sh /entrypoint-pi-web.sh
 COPY scripts/cube-start.sh /usr/local/bin/cube-start.sh
 COPY scripts/configure-pi-runtime.sh /usr/local/bin/configure-pi-runtime.sh
+COPY scripts/configure-cursor-runtime.sh /usr/local/bin/configure-cursor-runtime.sh
 COPY scripts/configure-multica-runtime.sh /usr/local/bin/configure-multica-runtime.sh
 COPY scripts/start-multica-runtime.sh /usr/local/bin/start-multica-runtime.sh
 COPY scripts/cont-init-browser.sh /etc/cont-init.d/99-browser-vnc
@@ -97,6 +99,7 @@ RUN chmod +x /entrypoint-vnc.sh \
   /entrypoint-pi-web.sh \
   /usr/local/bin/cube-start.sh \
   /usr/local/bin/configure-pi-runtime.sh \
+  /usr/local/bin/configure-cursor-runtime.sh \
   /usr/local/bin/configure-multica-runtime.sh \
   /usr/local/bin/start-multica-runtime.sh \
   /etc/cont-init.d/99-browser-vnc
@@ -129,6 +132,26 @@ RUN if [ "${INSTALL_PI}" != "1" ]; then \
 
 RUN ln -sf /root/.npm-global/bin/pi /usr/local/bin/pi \
   && ln -sf /root/.npm-global/bin/pi-mcp-adapter /usr/local/bin/pi-mcp-adapter || true
+
+# Cursor Agent CLI (headless). Multica daemon auto-detects `cursor-agent` on PATH.
+# Auth is runtime-only via CURSOR_API_KEY; do not bake keys into image layers.
+RUN if [ "${INSTALL_CURSOR}" != "1" ]; then \
+      echo "Skipping Cursor Agent install (INSTALL_CURSOR=${INSTALL_CURSOR})"; \
+    else \
+      curl -fsSL https://cursor.com/install | bash; \
+      mkdir -p /root/.local/bin; \
+      if [ -x /root/.local/bin/cursor-agent ]; then \
+        ln -sf /root/.local/bin/cursor-agent /usr/local/bin/cursor-agent; \
+      elif [ -x /root/.local/bin/agent ]; then \
+        ln -sf /root/.local/bin/agent /usr/local/bin/cursor-agent; \
+      else \
+        echo "ERROR: cursor-agent binary missing after install" >&2; \
+        ls -la /root/.local/bin /root/.local/share/cursor-agent 2>/dev/null || true; \
+        exit 1; \
+      fi; \
+      ln -sf /root/.local/bin/agent /usr/local/bin/agent 2>/dev/null || true; \
+      cursor-agent --version || /usr/local/bin/cursor-agent --version; \
+    fi
 
 COPY pi-web /opt/pi-web
 

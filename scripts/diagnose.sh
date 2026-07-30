@@ -18,9 +18,9 @@ echo "=== port mappings ==="
 ${DOCKER_BIN} port "${CID}" || true
 
 echo ""
-echo "=== processes (Cube API / Xvfb / VNC / Chromium / Pi / Multica) ==="
+echo "=== processes (Cube API / Xvfb / VNC / Chromium / Pi / Cursor / Multica) ==="
 ${DOCKER_BIN} exec "${CID}" sh -c \
-  'ps aux | grep -E "uvicorn|envd|Xvfb|x11vnc|websockify|chromium|entrypoint-vnc|pi-web|server.js|multica" | grep -v grep || echo "(none)"'
+  'ps aux | grep -E "uvicorn|envd|Xvfb|x11vnc|websockify|chromium|entrypoint-vnc|pi-web|server.js|multica|cursor-agent" | grep -v grep || echo "(none)"'
 
 echo ""
 echo "=== listening ports ==="
@@ -31,8 +31,9 @@ echo ""
 echo "=== key paths and binaries ==="
 ${DOCKER_BIN} exec "${CID}" sh -c \
   'ls -la /workspace /workspace/uploads /workspace/browser-shots /data/browser-profile 2>&1; \
-   for c in python3 node npm chromium rg fd pi multica Xvfb x11vnc websockify openbox; do printf "%s=" "$c"; command -v "$c" || true; done; \
+   for c in python3 node npm chromium rg fd pi cursor-agent multica Xvfb x11vnc websockify openbox; do printf "%s=" "$c"; command -v "$c" || true; done; \
    pi --version 2>/dev/null || true; \
+   cursor-agent --version 2>/dev/null || true; \
    multica version 2>/dev/null || true'
 
 echo ""

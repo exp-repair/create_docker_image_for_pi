@@ -66,7 +66,8 @@ PY
 
 resolve_sandbox_device_name
 
-export PATH="/root/.npm-global/bin:/root/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
+export PATH="/root/.local/bin:/root/.npm-global/bin:/root/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
+CURSOR_ENV_FILE="${CURSOR_ENV_FILE:-${MULTICA_HOME}/.cursor/runtime.env}"
 
 mkdir -p "${MULTICA_HOME}/.multica"
 
@@ -74,6 +75,20 @@ if [[ -n "${TEAM_PI_CONFIG:-}" || -n "${TEAM_API_KEY:-}" || -n "${TEAM_BASE_URL:
   configure-pi-runtime.sh
 else
   log "TEAM_PI_CONFIG / TEAM_* not provided; leaving Pi config unchanged"
+fi
+
+if command -v configure-cursor-runtime.sh >/dev/null 2>&1; then
+  if [[ -n "${CURSOR_API_KEY:-}" || -n "${MULTICA_CURSOR_PATH:-}" || -n "${MULTICA_CURSOR_MODEL:-}" ]] \
+    || command -v cursor-agent >/dev/null 2>&1 \
+    || [[ -x /usr/local/bin/cursor-agent ]]; then
+    configure-cursor-runtime.sh
+  else
+    log "cursor-agent not installed; skipping Cursor runtime configure"
+  fi
+fi
+if [[ -f "${CURSOR_ENV_FILE}" ]]; then
+  # shellcheck disable=SC1090
+  source "${CURSOR_ENV_FILE}"
 fi
 
 configure-multica-runtime.sh

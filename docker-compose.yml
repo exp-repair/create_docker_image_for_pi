@@ -4,6 +4,7 @@ services:
       context: .
       args:
         INSTALL_PI: ${INSTALL_PI:-1}
+        INSTALL_CURSOR: ${INSTALL_CURSOR:-1}
         PI_SUITE_VERSION: ${PI_SUITE_VERSION:-0.1.17}
         PI_SUITE: ${PI_SUITE:-npm:@lebronj/pi-suite}
         PI_WORKSPACE_DIR: ${PI_WORKSPACE_DIR:-/workspace}

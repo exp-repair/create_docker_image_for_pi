@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create a Cube sandbox, then inject Pi/Multica runtime parameters and start daemon.
+# Create a Cube sandbox, then inject Pi/Cursor/Multica runtime parameters and start daemon.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -93,7 +93,16 @@ if proxy_url:
         "NO_PROXY": os.environ.get("SANDBOX_NO_PROXY", "localhost,127.0.0.1,::1"),
         "no_proxy": os.environ.get("SANDBOX_NO_PROXY", "localhost,127.0.0.1,::1"),
     })
-for optional_key in ("BRIDGE_USER_ID", "AREAL_BASE_URL", "AREAL_API", "AREAL_API_KEY", "MULTICA_PROFILE"):
+for optional_key in (
+    "BRIDGE_USER_ID",
+    "AREAL_BASE_URL",
+    "AREAL_API",
+    "AREAL_API_KEY",
+    "MULTICA_PROFILE",
+    "CURSOR_API_KEY",
+    "MULTICA_CURSOR_PATH",
+    "MULTICA_CURSOR_MODEL",
+):
     if os.environ.get(optional_key):
         runtime_env[optional_key] = os.environ[optional_key]
 code = """
@@ -102,7 +111,7 @@ runtime_env = json.loads(%r)
 env = os.environ.copy()
 env.update(runtime_env)
 env["HOME"] = "/root"
-env["PATH"] = "/root/.npm-global/bin:/root/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
+env["PATH"] = "/root/.local/bin:/root/.npm-global/bin:/root/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
 proc = subprocess.run(["bash", "-lc", "/usr/local/bin/start-multica-runtime.sh"], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60, env=env)
 print(proc.stdout)
 if proc.returncode != 0:

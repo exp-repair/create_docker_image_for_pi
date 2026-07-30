@@ -11,9 +11,10 @@ MULTICA_RELEASE_REPO_WEB_URL="${MULTICA_RELEASE_REPO_WEB_URL:-https://github.com
 
 # Download Multica CLI/daemon on the host into the build context, then COPY into
 # the image. This avoids GitHub downloads from inside docker build.
-# Skip re-download if the file already exists:
+# If multica/bin/multica already exists, reuse it by default (private release
+# repos often 404 without auth). Override:
 #   MULTICA_SKIP_DOWNLOAD=1 ./scripts/build.sh
-# Or point at an existing binary:
+#   MULTICA_FORCE_DOWNLOAD=1 ./scripts/build.sh
 #   MULTICA_LOCAL_BIN=/usr/local/bin/multica ./scripts/build.sh
 
 download_multica_release() {
@@ -99,10 +100,27 @@ if [[ -n "${MULTICA_LOCAL_BIN:-}" ]]; then
   cp "${MULTICA_LOCAL_BIN}" "${MULTICA_CONTEXT_BIN}"
   chmod +x "${MULTICA_CONTEXT_BIN}"
   echo "[build.sh] using local Multica binary from ${MULTICA_LOCAL_BIN}"
-elif [[ "${MULTICA_SKIP_DOWNLOAD:-0}" == "1" && -x "${MULTICA_CONTEXT_BIN}" ]]; then
+elif [[ "${MULTICA_SKIP_DOWNLOAD:-0}" == "1" ]]; then
+  if [[ ! -x "${MULTICA_CONTEXT_BIN}" ]]; then
+    echo "[build.sh] ERROR: MULTICA_SKIP_DOWNLOAD=1 but missing executable: ${MULTICA_CONTEXT_BIN}" >&2
+    exit 1
+  fi
   echo "[build.sh] reusing existing Multica binary at ${MULTICA_CONTEXT_BIN}"
+elif [[ "${MULTICA_FORCE_DOWNLOAD:-0}" != "1" && -x "${MULTICA_CONTEXT_BIN}" ]]; then
+  # Private/missing GitHub releases are common; reuse the build-context binary by default.
+  echo "[build.sh] reusing existing Multica binary at ${MULTICA_CONTEXT_BIN} (set MULTICA_FORCE_DOWNLOAD=1 to refresh)"
+  "${MULTICA_CONTEXT_BIN}" version || true
 else
-  download_multica_release "${MULTICA_CONTEXT_BIN}"
+  if ! download_multica_release "${MULTICA_CONTEXT_BIN}"; then
+    if [[ -x "${MULTICA_CONTEXT_BIN}" ]]; then
+      echo "[build.sh] WARN: Multica download failed; falling back to existing ${MULTICA_CONTEXT_BIN}" >&2
+      "${MULTICA_CONTEXT_BIN}" version || true
+    else
+      echo "[build.sh] ERROR: Multica download failed and no local binary at ${MULTICA_CONTEXT_BIN}" >&2
+      echo "[build.sh] hint: place a binary there, or set MULTICA_LOCAL_BIN=/path/to/multica" >&2
+      exit 1
+    fi
+  fi
 fi
 
 if [[ -f "${PI_CONFIG}" ]]; then
@@ -115,7 +133,9 @@ if [[ -f "${PI_CONFIG}" ]]; then
 fi
 
 INSTALL_PI="${INSTALL_PI:-1}"
+INSTALL_CURSOR="${INSTALL_CURSOR:-1}"
 EXTRA+=(--build-arg "INSTALL_PI=${INSTALL_PI}")
+EXTRA+=(--build-arg "INSTALL_CURSOR=${INSTALL_CURSOR}")
 
 if [[ "${INSTALL_PI}" == "1" ]]; then
   EXTRA+=(
@@ -128,6 +148,12 @@ if [[ "${INSTALL_PI}" == "1" ]]; then
   echo "[build.sh] Pi install: enabled (suite ${PI_SUITE_VERSION:-0.1.17}); TEAM_* will be injected at runtime"
 else
   echo "[build.sh] Pi install: skipped (INSTALL_PI=0)"
+fi
+
+if [[ "${INSTALL_CURSOR}" == "1" ]]; then
+  echo "[build.sh] Cursor Agent install: enabled; CURSOR_API_KEY will be injected at runtime"
+else
+  echo "[build.sh] Cursor Agent install: skipped (INSTALL_CURSOR=0)"
 fi
 
 echo "[build.sh] SANDBOX_IMAGE=${SANDBOX_IMAGE}"

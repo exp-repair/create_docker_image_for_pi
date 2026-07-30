@@ -3,7 +3,7 @@
 set -euo pipefail
 
 export HOME="${HOME:-/root}"
-export PATH="/root/.npm-global/bin:/root/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
+export PATH="/root/.local/bin:/root/.npm-global/bin:/root/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
 export DISPLAY="${DISPLAY:-:0}"
 export SCREEN_GEOM="${SCREEN_GEOM:-1920x1080x24}"
 export RESOLUTION="${RESOLUTION:-1920x1080x24}"

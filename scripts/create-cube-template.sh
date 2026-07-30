@@ -58,12 +58,14 @@ set -eu
 test -x /usr/local/bin/cube-start.sh
 test -x /usr/local/bin/start-multica-runtime.sh
 test -x /usr/local/bin/configure-pi-runtime.sh
+test -x /usr/local/bin/configure-cursor-runtime.sh
 test -x /usr/local/bin/configure-multica-runtime.sh
 test -x /entrypoint-multica-daemon.sh
 test -x /entrypoint-pi-web.sh
 test -x /usr/local/bin/multica
 test -f /opt/pi-web/server.js
 command -v pi >/dev/null 2>&1 || test -x /root/.npm-global/bin/pi
+command -v cursor-agent >/dev/null 2>&1 || test -x /usr/local/bin/cursor-agent || test -x /root/.local/bin/cursor-agent
 ! id user >/dev/null 2>&1
 '
 
