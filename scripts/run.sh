@@ -63,6 +63,8 @@ ${DOCKER_BIN} run -d --name "${NAME}" \
   ${TEAM_API_KEY:+-e TEAM_API_KEY="${TEAM_API_KEY}"} \
   -e TEAM_BASE_URL="${TEAM_BASE_URL:-https://claude-code.club/openai/v1}" \
   -e TEAM_MODEL="${TEAM_MODEL:-gpt-5.5}" \
+  -e TEAM_API="${TEAM_API:-openai-responses}" \
+  ${TEAM_PROVIDER:+-e TEAM_PROVIDER="${TEAM_PROVIDER}"} \
   ${BRIDGE_USER_ID:+-e BRIDGE_USER_ID="${BRIDGE_USER_ID}"} \
   ${AREAL_BASE_URL:+-e AREAL_BASE_URL="${AREAL_BASE_URL}"} \
   ${AREAL_API:+-e AREAL_API="${AREAL_API}"} \

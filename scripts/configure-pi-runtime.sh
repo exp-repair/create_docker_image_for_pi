@@ -14,6 +14,7 @@ SETTINGS_FILE="${AGENT_DIR}/settings.json"
 TEAM_BASE_URL="${TEAM_BASE_URL:-https://claude-code.club/openai/v1}"
 TEAM_MODEL="${TEAM_MODEL:-gpt-5.5}"
 TEAM_PROVIDER="${TEAM_PROVIDER:-openai}"
+TEAM_API="${TEAM_API:-openai-responses}"
 AREAL_BASE_URL="${AREAL_BASE_URL:-http://10.110.158.143:9100}"
 AREAL_API="${AREAL_API:-openai-completions}"
 AREAL_API_KEY="${AREAL_API_KEY:-bridge}"
@@ -36,6 +37,7 @@ if command -v node >/dev/null 2>&1; then
   TEAM_BASE_URL="${TEAM_BASE_URL}" \
   TEAM_MODEL="${TEAM_MODEL}" \
   TEAM_PROVIDER="${TEAM_PROVIDER}" \
+  TEAM_API="${TEAM_API}" \
   BRIDGE_USER_ID="${BRIDGE_USER_ID}" \
   AREAL_BASE_URL="${AREAL_BASE_URL}" \
   AREAL_API="${AREAL_API}" \
@@ -71,6 +73,7 @@ function buildAreal() {
 }
 
 function normalizeConfig() {
+  const defaultApi = String(process.env.TEAM_API || "openai-responses").trim() || "openai-responses";
   const raw = (process.env.TEAM_PI_CONFIG || "").trim();
   if (raw) {
     try {
@@ -79,6 +82,7 @@ function normalizeConfig() {
       const list = providers
         .map((p) => ({
           name: String(p.name || p.provider || "openai").trim() || "openai",
+          api: String(p.api || defaultApi).trim() || defaultApi,
           apiKey: String(p.apiKey || p.api_key || "").trim(),
           baseUrl: String(p.baseUrl || p.base_url || "").trim(),
           model: String(p.model || "").trim(),
@@ -99,6 +103,7 @@ function normalizeConfig() {
   return {
     providers: [{
       name,
+      api: defaultApi,
       apiKey: String(process.env.TEAM_API_KEY || "").trim(),
       baseUrl: String(process.env.TEAM_BASE_URL || "").trim(),
       model: String(process.env.TEAM_MODEL || "").trim(),
@@ -113,6 +118,7 @@ function upsertProvider(providers, entry) {
     ? { ...providers[entry.name] }
     : {};
   if (entry.baseUrl) existing.baseUrl = entry.baseUrl;
+  if (entry.api) existing.api = entry.api;
   if (entry.apiKey) {
     existing.apiKey = entry.apiKey;
   } else {
@@ -162,6 +168,7 @@ elif command -v python3 >/dev/null 2>&1; then
   TEAM_BASE_URL="${TEAM_BASE_URL}" \
   TEAM_MODEL="${TEAM_MODEL}" \
   TEAM_PROVIDER="${TEAM_PROVIDER}" \
+  TEAM_API="${TEAM_API}" \
   BRIDGE_USER_ID="${BRIDGE_USER_ID}" \
   AREAL_BASE_URL="${AREAL_BASE_URL}" \
   AREAL_API="${AREAL_API}" \
@@ -199,6 +206,7 @@ def build_areal():
 
 
 def normalize_config():
+    default_api = str(os.environ.get("TEAM_API") or "openai-responses").strip() or "openai-responses"
     raw = (os.environ.get("TEAM_PI_CONFIG") or "").strip()
     if raw:
         try:
@@ -211,6 +219,7 @@ def normalize_config():
                 name = str(p.get("name") or p.get("provider") or "openai").strip() or "openai"
                 out.append({
                     "name": name,
+                    "api": str(p.get("api") or default_api).strip() or default_api,
                     "apiKey": str(p.get("apiKey") or p.get("api_key") or "").strip(),
                     "baseUrl": str(p.get("baseUrl") or p.get("base_url") or "").strip(),
                     "model": str(p.get("model") or "").strip(),
@@ -227,6 +236,7 @@ def normalize_config():
     return {
         "providers": [{
             "name": name,
+            "api": default_api,
             "apiKey": str(os.environ.get("TEAM_API_KEY") or "").strip(),
             "baseUrl": str(os.environ.get("TEAM_BASE_URL") or "").strip(),
             "model": str(os.environ.get("TEAM_MODEL") or "").strip(),
@@ -241,6 +251,8 @@ def upsert_provider(providers, entry):
     existing = dict(existing)
     if entry.get("baseUrl"):
         existing["baseUrl"] = entry["baseUrl"]
+    if entry.get("api"):
+        existing["api"] = entry["api"]
     if entry.get("apiKey"):
         existing["apiKey"] = entry["apiKey"]
     else:
@@ -283,4 +295,4 @@ if [[ "$(id -u)" == "0" ]] && [[ "${PI_USER}" != "root" ]] && id "${PI_USER}" >/
   chown -R "${PI_USER}:${PI_USER}" "${AGENT_DIR}"
 fi
 
-log "configured TEAM_PI_CONFIG=${TEAM_PI_CONFIG:+set} TEAM_PROVIDER=${TEAM_PROVIDER} TEAM_BASE_URL=${TEAM_BASE_URL} TEAM_MODEL=${TEAM_MODEL} areal.baseUrl=${AREAL_BASE_URL} bridgeUserId=${BRIDGE_USER_ID:-<empty>}"
+log "configured TEAM_PI_CONFIG=${TEAM_PI_CONFIG:+set} TEAM_PROVIDER=${TEAM_PROVIDER} TEAM_API=${TEAM_API} TEAM_BASE_URL=${TEAM_BASE_URL} TEAM_MODEL=${TEAM_MODEL} areal.baseUrl=${AREAL_BASE_URL} bridgeUserId=${BRIDGE_USER_ID:-<empty>}"

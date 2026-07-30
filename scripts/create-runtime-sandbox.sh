@@ -75,6 +75,7 @@ runtime_env = {
     "TEAM_API_KEY": os.environ["TEAM_API_KEY"],
     "TEAM_BASE_URL": os.environ["TEAM_BASE_URL"],
     "TEAM_MODEL": os.environ["TEAM_MODEL"],
+    "TEAM_API": os.environ.get("TEAM_API", "openai-responses"),
     "MULTICA_SERVER_URL": os.environ["MULTICA_SERVER_URL"],
     "MULTICA_APP_URL": os.environ["MULTICA_APP_URL"],
     "MULTICA_WORKSPACE_ID": os.environ["MULTICA_WORKSPACE_ID"],
@@ -94,6 +95,8 @@ if proxy_url:
         "no_proxy": os.environ.get("SANDBOX_NO_PROXY", "localhost,127.0.0.1,::1"),
     })
 for optional_key in (
+    "TEAM_PROVIDER",
+    "TEAM_PI_CONFIG",
     "BRIDGE_USER_ID",
     "AREAL_BASE_URL",
     "AREAL_API",
