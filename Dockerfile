@@ -154,6 +154,16 @@ RUN if [ "${INSTALL_CURSOR}" != "1" ]; then \
     fi
 
 COPY pi-web /opt/pi-web
+# WebTTY needs node-pty (native). Install build tools only for this step.
+RUN apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+  && cd /opt/pi-web \
+  && npm install --omit=dev \
+  && apt-get purge -y --auto-remove make g++ \
+  && rm -rf /var/lib/apt/lists/* /root/.npm/_cacache /tmp/* /var/tmp/*
 
 # Remove the non-root working account inherited from the Cube base image. System
 # accounts such as nobody/daemon remain because Debian packages may rely on them.

@@ -16,7 +16,7 @@ Cube template/sandbox, and configuring Pi + Cursor Agent + Multica at runtime.
 
 | Script | Purpose |
 | --- | --- |
-| `build.sh` | Downloads or reuses the Multica binary, then builds the image. Defaults to `cube-sandbox-cn.tencentcloudcr.com/cube-sandbox/sandbox-code@sha256:b551...`. Supports `TAG`, `SANDBOX_IMAGE`, `NODE_MAJOR`, `INSTALL_PI`, `INSTALL_CURSOR`, `PI_SUITE_VERSION`, `NPM_REGISTRY`, `MULTICA_SKIP_DOWNLOAD`, `MULTICA_LOCAL_BIN`, and standard proxy build args. |
+| `build.sh` | Downloads or reuses the Multica binary from `https://cdn.leagent.me/computer` (same feed as `install.sh`), then builds the image. Supports `TAG`, `SANDBOX_IMAGE`, `NODE_MAJOR`, `INSTALL_PI`, `INSTALL_CURSOR`, `PI_SUITE_VERSION`, `NPM_REGISTRY`, `MULTICA_SKIP_DOWNLOAD`, `MULTICA_FORCE_DOWNLOAD`, `MULTICA_LOCAL_BIN`, `MULTICA_RELEASE_MANIFEST_BASE_URL`, and standard proxy build args. |
 | `run.sh` | Runs the image locally, maps `6079`, `6080`, `5901`, `49983`, `49999`, and passes `TEAM_*`, `AREAL_*`, `BRIDGE_USER_ID`, `CURSOR_API_KEY`, `MULTICA_*`, and optional sandbox proxy env values. Uses `DOCKER_BIN` when set. |
 | `diagnose.sh` | Prints container state, listening ports, important binaries, Pi/Cursor/Multica versions, and host HTTP checks. Uses `DOCKER_BIN` when set. |
 | `create-cube-template.sh` | Converts the image into a Cube template, exposing `6079`, `6080`, and `9223`, probing `49999/health`, and writing `.cube-template.env`. |
@@ -24,7 +24,7 @@ Cube template/sandbox, and configuring Pi + Cursor Agent + Multica at runtime.
 | `cube-start.sh` | Main image entrypoint. Starts VNC/noVNC/Pi web helpers, optionally starts Multica when `MULTICA_AUTOSTART=1`, then execs `/usr/local/bin/start-lightweight-code-interpreter.sh`. |
 | `cont-init-browser.sh` | Starts `/entrypoint-vnc.sh` and `/entrypoint-pi-web.sh` under root. |
 | `entrypoint-vnc.sh` | Starts Xvfb, openbox, Chromium with CDP `:9223`, x11vnc, and noVNC. |
-| `entrypoint-pi-web.sh` | Starts the Pi web bridge backed by `pi --mode rpc`. |
+| `entrypoint-pi-web.sh` | Starts the Pi web bridge backed by `pi --mode rpc`, including WebTTY at `/term`. |
 | `configure-pi-runtime.sh` | Writes Pi `models.json` / `settings.json`, including the `areal` provider for db-bridge. |
 | `configure-cursor-runtime.sh` | Resolves `cursor-agent`, writes `/root/.cursor/runtime.env` from `CURSOR_API_KEY` / `MULTICA_CURSOR_*`. |
 | `configure-multica-runtime.sh` | Writes Multica CLI/daemon config from runtime `MULTICA_*` values. |
@@ -43,7 +43,7 @@ Cube template/sandbox, and configuring Pi + Cursor Agent + Multica at runtime.
 | `MULTICA_CURSOR_PATH` | Optional override path to `cursor-agent`. |
 | `MULTICA_CURSOR_MODEL` | Optional Multica default model for Cursor Agent. |
 | `INSTALL_CURSOR` | Build-time flag (`1`/`0`) to install Cursor Agent CLI into the image. |
-| `MULTICA_SERVER_URL`, `MULTICA_APP_URL`, `MULTICA_WORKSPACE_ID`, `MULTICA_TOKEN` | Required to configure Multica daemon. |
+| `MULTICA_SERVER_URL`, `MULTICA_APP_URL`, `MULTICA_WORKSPACE_ID`, `MULTICA_TOKEN` | Required to configure Multica daemon. Defaults for URLs are `https://leagent.me` (headless stand-in for `multica setup self-host`). |
 | `MULTICA_PROFILE` | Optional profile name under `~/.multica/profiles/<name>`. |
 | `MULTICA_DAEMON_ENABLED` | `1` to run the daemon, `0` to keep it disabled. |
 | `MULTICA_AUTOSTART` | `1` to start Multica during container entrypoint; otherwise use `start-multica-runtime.sh`. |

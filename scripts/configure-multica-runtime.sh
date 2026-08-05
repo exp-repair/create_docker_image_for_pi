@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 # Configure Multica CLI/daemon from runtime environment, not image layers.
+#
+# Equivalent headless substitute for:
+#   multica setup self-host --server-url https://leagent.me --app-url https://leagent.me
+# Interactive setup opens a browser for OAuth; Cube sandboxes cannot do that.
+# Instead inject MULTICA_SERVER_URL / MULTICA_APP_URL / MULTICA_WORKSPACE_ID /
+# MULTICA_TOKEN and write ~/.multica/config.json, then start the daemon.
 set -euo pipefail
 
 log() { echo "[configure-multica-runtime] $*"; }
@@ -15,8 +21,8 @@ else
 fi
 CONFIG_FILE="${CONFIG_DIR}/config.json"
 
-SERVER_URL="${MULTICA_SERVER_URL:-}"
-APP_URL="${MULTICA_APP_URL:-}"
+SERVER_URL="${MULTICA_SERVER_URL:-https://leagent.me}"
+APP_URL="${MULTICA_APP_URL:-https://leagent.me}"
 WORKSPACE_ID="${MULTICA_WORKSPACE_ID:-}"
 TOKEN="${MULTICA_TOKEN:-}"
 
@@ -28,6 +34,7 @@ missing=()
 
 if (( ${#missing[@]} > 0 )); then
   log "missing ${missing[*]}; not writing ${CONFIG_FILE}"
+  log "hint: for interactive hosts use: multica setup self-host --server-url ${SERVER_URL} --app-url ${APP_URL}"
   exit 2
 fi
 

@@ -7,19 +7,21 @@ SANDBOX_IMAGE="${SANDBOX_IMAGE:-cube-sandbox-cn.tencentcloudcr.com/cube-sandbox/
 PI_CONFIG="${PI_CONFIG:-config/pi.env}"
 MULTICA_CONTEXT_DIR="multica/bin"
 MULTICA_CONTEXT_BIN="${MULTICA_CONTEXT_DIR}/multica"
-MULTICA_RELEASE_REPO_WEB_URL="${MULTICA_RELEASE_REPO_WEB_URL:-https://github.com/LRM-Teams/multica}"
+# Official LeAgent/Multica CLI feed (GitHub LRM-Teams releases 404 without auth).
+MULTICA_RELEASE_MANIFEST_BASE_URL="${MULTICA_RELEASE_MANIFEST_BASE_URL:-https://cdn.leagent.me/computer}"
+MULTICA_INSTALL_SCRIPT_URL="${MULTICA_INSTALL_SCRIPT_URL:-${MULTICA_RELEASE_MANIFEST_BASE_URL}/install.sh}"
 
 # Download Multica CLI/daemon on the host into the build context, then COPY into
-# the image. This avoids GitHub downloads from inside docker build.
-# If multica/bin/multica already exists, reuse it by default (private release
-# repos often 404 without auth). Override:
-#   MULTICA_SKIP_DOWNLOAD=1 ./scripts/build.sh
-#   MULTICA_FORCE_DOWNLOAD=1 ./scripts/build.sh
+# the image. Prefer the public CDN feed used by:
+#   curl -fsSL https://cdn.leagent.me/computer/install.sh | bash
+# By default always refresh from CDN; fall back to multica/bin/multica on failure.
+# Override:
+#   MULTICA_SKIP_DOWNLOAD=1 ./scripts/build.sh          # force reuse local
 #   MULTICA_LOCAL_BIN=/usr/local/bin/multica ./scripts/build.sh
 
 download_multica_release() {
   local dest="$1"
-  local os arch latest version url tmp_dir
+  local os arch platform manifest_file latest url sha256 tmp_dir actual expected
 
   case "$(uname -s)" in
     Linux) os="linux" ;;
@@ -37,41 +39,69 @@ download_multica_release() {
       return 1
       ;;
   esac
+  platform="${os}-${arch}"
 
-  echo "[build.sh] resolving latest Multica release from ${MULTICA_RELEASE_REPO_WEB_URL}"
-  # Capture headers first. Piping curl|awk under `set -o pipefail` can exit 141
-  # (SIGPIPE) when awk closes early, which looks like a silent stop.
-  headers="$(
-    curl -sS --http1.1 -I \
-      --connect-timeout 30 --max-time 120 \
-      --retry 5 --retry-delay 3 --retry-all-errors \
-      "${MULTICA_RELEASE_REPO_WEB_URL}/releases/latest"
-  )"
-  latest="$(
-    printf '%s\n' "${headers}" \
-      | tr -d '\r' \
-      | awk 'tolower($1)=="location:" {print $2; exit}' \
-      | sed 's|.*/tag/||'
-  )"
-  if [[ -z "${latest}" ]]; then
-    echo "[build.sh] ERROR: could not determine latest Multica release" >&2
-    echo "[build.sh] response headers:" >&2
-    printf '%s\n' "${headers}" >&2
+  echo "[build.sh] fetching Multica release manifest from ${MULTICA_RELEASE_MANIFEST_BASE_URL}/latest.json"
+  manifest_file="$(mktemp)"
+  if ! curl -fsSL --http1.1 \
+    --connect-timeout 30 --max-time 120 \
+    --retry 5 --retry-delay 3 --retry-all-errors \
+    -o "${manifest_file}" \
+    "${MULTICA_RELEASE_MANIFEST_BASE_URL}/latest.json"
+  then
+    rm -f "${manifest_file}"
+    echo "[build.sh] ERROR: could not fetch ${MULTICA_RELEASE_MANIFEST_BASE_URL}/latest.json" >&2
+    echo "[build.sh] hint: host may need proxy access to cdn.leagent.me, or reuse a local binary" >&2
     return 1
   fi
-  version="${latest#v}"
-  url="${MULTICA_RELEASE_REPO_WEB_URL}/releases/download/${latest}/multica-cli-${version}-${os}-${arch}.tar.gz"
-  echo "[build.sh] downloading ${url}"
 
+  latest="$(python3 - <<PY
+import json
+print(json.load(open("${manifest_file}")).get("tag") or "")
+PY
+)"
+  url="$(python3 - <<PY
+import json
+data = json.load(open("${manifest_file}"))
+print((data.get("platforms") or {}).get("${platform}", {}).get("url") or "")
+PY
+)"
+  sha256="$(python3 - <<PY
+import json
+data = json.load(open("${manifest_file}"))
+print((data.get("platforms") or {}).get("${platform}", {}).get("sha256") or "")
+PY
+)"
+  rm -f "${manifest_file}"
+
+  if [[ -z "${latest}" || -z "${url}" || -z "${sha256}" ]]; then
+    echo "[build.sh] ERROR: manifest missing tag/url/sha256 for platform ${platform}" >&2
+    return 1
+  fi
+
+  echo "[build.sh] downloading ${url} (${latest})"
   tmp_dir="$(mktemp -d)"
   # shellcheck disable=SC2064
   trap "rm -rf '${tmp_dir}'" RETURN
-  # -# shows a progress bar; avoid -s so download progress is visible.
-  curl -fL --http1.1 --progress-bar \
+  if ! curl -fL --http1.1 --progress-bar \
     --connect-timeout 30 --max-time 600 \
     --retry 5 --retry-delay 3 --retry-all-errors \
     -o "${tmp_dir}/multica.tar.gz" \
     "${url}"
+  then
+    echo "[build.sh] ERROR: failed to download ${url}" >&2
+    return 1
+  fi
+
+  actual="$(sha256sum "${tmp_dir}/multica.tar.gz" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
+  expected="$(printf '%s' "${sha256}" | tr '[:upper:]' '[:lower:]')"
+  if [[ "${actual}" != "${expected}" ]]; then
+    echo "[build.sh] ERROR: checksum mismatch for Multica archive" >&2
+    echo "[build.sh] expected=${expected}" >&2
+    echo "[build.sh] actual=${actual}" >&2
+    return 1
+  fi
+
   tar -xzf "${tmp_dir}/multica.tar.gz" -C "${tmp_dir}" multica
   mkdir -p "$(dirname "${dest}")"
   cp "${tmp_dir}/multica" "${dest}"
@@ -106,18 +136,16 @@ elif [[ "${MULTICA_SKIP_DOWNLOAD:-0}" == "1" ]]; then
     exit 1
   fi
   echo "[build.sh] reusing existing Multica binary at ${MULTICA_CONTEXT_BIN}"
-elif [[ "${MULTICA_FORCE_DOWNLOAD:-0}" != "1" && -x "${MULTICA_CONTEXT_BIN}" ]]; then
-  # Private/missing GitHub releases are common; reuse the build-context binary by default.
-  echo "[build.sh] reusing existing Multica binary at ${MULTICA_CONTEXT_BIN} (set MULTICA_FORCE_DOWNLOAD=1 to refresh)"
   "${MULTICA_CONTEXT_BIN}" version || true
 else
   if ! download_multica_release "${MULTICA_CONTEXT_BIN}"; then
     if [[ -x "${MULTICA_CONTEXT_BIN}" ]]; then
-      echo "[build.sh] WARN: Multica download failed; falling back to existing ${MULTICA_CONTEXT_BIN}" >&2
+      echo "[build.sh] WARN: Multica CDN download failed; falling back to existing ${MULTICA_CONTEXT_BIN}" >&2
       "${MULTICA_CONTEXT_BIN}" version || true
     else
       echo "[build.sh] ERROR: Multica download failed and no local binary at ${MULTICA_CONTEXT_BIN}" >&2
-      echo "[build.sh] hint: place a binary there, or set MULTICA_LOCAL_BIN=/path/to/multica" >&2
+      echo "[build.sh] hint: curl -fsSL ${MULTICA_INSTALL_SCRIPT_URL} | bash" >&2
+      echo "[build.sh]       then MULTICA_LOCAL_BIN=\$HOME/.local/bin/multica ./scripts/build.sh" >&2
       exit 1
     fi
   fi

@@ -6,16 +6,26 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
+const os = require("node:os");
+const pty = require("node-pty");
+const { WebSocketServer } = require("ws");
 
 const HOST = process.env.PI_WEB_HOST || "0.0.0.0";
 const PORT = Number(process.env.PI_WEB_PORT || 6079);
 const WORKSPACE_DIR = process.env.PI_WEB_WORKSPACE || process.env.PI_WORKSPACE_DIR || "/workspace";
 const PI_BIN = process.env.PI_BIN || "pi";
 const PUBLIC_DIR = path.join(__dirname, "public");
+const NODE_MODULES_DIR = path.join(__dirname, "node_modules");
 const AGENT_DIR = process.env.PI_AGENT_DIR || path.join(process.env.HOME || "/root", ".pi", "agent");
 const SESSIONS_ROOT = path.join(AGENT_DIR, "sessions");
 const MODELS_FILE = path.join(AGENT_DIR, "models.json");
 const SETTINGS_FILE = path.join(AGENT_DIR, "settings.json");
+
+const TERM_SHELL = process.env.PI_WEB_TERM_SHELL || (fs.existsSync("/bin/bash") ? "/bin/bash" : "/bin/sh");
+const TERM_TOKEN = process.env.PI_WEB_TERM_TOKEN || "";
+const TERM_IDLE_MS = Number(process.env.PI_WEB_TERM_IDLE_MS || 30 * 60 * 1000);
+const TERM_MAX_SESSIONS = Number(process.env.PI_WEB_TERM_MAX_SESSIONS || 8);
+const termSessions = new Set();
 
 const clients = new Set();
 const pending = new Map();
@@ -522,6 +532,10 @@ function startRpc() {
     stdio: ["pipe", "pipe", "pipe"],
   });
 
+  rpc.stdin.on("error", (error) => {
+    broadcast("error", { message: "Pi RPC stdin error", detail: error.message });
+  });
+
   rpc.stdout.setEncoding("utf8");
   rpc.stdout.on("data", (chunk) => {
     rpcBuffer += chunk;
@@ -737,21 +751,203 @@ async function handleApi(req, res, url) {
       const result = await rpcCommand({ type: "abort" }, 30000);
       return json(res, result.success ? 200 : 500, result);
     }
+    if (req.method === "GET" && url.pathname === "/api/term") {
+      return json(res, 200, {
+        path: "/term",
+        wsPath: "/ws/term",
+        shell: TERM_SHELL,
+        cwd: WORKSPACE_DIR,
+        tokenRequired: Boolean(TERM_TOKEN),
+        activeSessions: termSessions.size,
+        maxSessions: TERM_MAX_SESSIONS,
+        idleMs: TERM_IDLE_MS,
+      });
+    }
     return notFound(res);
   } catch (error) {
     return json(res, 500, { error: error.message });
   }
 }
 
+function contentTypeFor(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const types = {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".map": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".json": "application/json; charset=utf-8",
+  };
+  return types[ext] || "application/octet-stream";
+}
+
+function underRoot(candidate, rootDir) {
+  const resolved = path.resolve(candidate);
+  const root = path.resolve(rootDir);
+  return resolved === root || resolved.startsWith(`${root}${path.sep}`);
+}
+
+function serveFile(res, fullPath, rootDir) {
+  const resolved = path.resolve(fullPath);
+  if (!underRoot(resolved, rootDir) || !fs.existsSync(resolved) || fs.statSync(resolved).isDirectory()) {
+    return notFound(res);
+  }
+  res.writeHead(200, { "content-type": contentTypeFor(resolved) });
+  fs.createReadStream(resolved).pipe(res);
+}
+
 function serveStatic(req, res, url) {
+  if (url.pathname === "/term" || url.pathname === "/term/") {
+    return serveFile(res, path.join(PUBLIC_DIR, "term.html"), PUBLIC_DIR);
+  }
+  if (url.pathname.startsWith("/vendor/")) {
+    const rel = decodeURIComponent(url.pathname.slice("/vendor/".length));
+    const safe = path.normalize(rel).replace(/^([.][.][/\\])+/, "");
+    return serveFile(res, path.join(NODE_MODULES_DIR, safe), NODE_MODULES_DIR);
+  }
   let file = url.pathname === "/" ? "index.html" : decodeURIComponent(url.pathname.slice(1));
   file = path.normalize(file).replace(/^([.][.][/\\])+/, "");
-  const fullPath = path.join(PUBLIC_DIR, file);
-  if (!fullPath.startsWith(PUBLIC_DIR) || !fs.existsSync(fullPath) || fs.statSync(fullPath).isDirectory()) return notFound(res);
-  const ext = path.extname(fullPath).toLowerCase();
-  const types = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".svg": "image/svg+xml" };
-  res.writeHead(200, { "content-type": types[ext] || "application/octet-stream" });
-  fs.createReadStream(fullPath).pipe(res);
+  serveFile(res, path.join(PUBLIC_DIR, file), PUBLIC_DIR);
+}
+
+function extractTermToken(req, url) {
+  const queryToken = url.searchParams.get("token");
+  if (queryToken) return queryToken;
+  const auth = req.headers.authorization || "";
+  if (auth.toLowerCase().startsWith("bearer ")) return auth.slice(7).trim();
+  return "";
+}
+
+function termAuthorized(req, url) {
+  if (!TERM_TOKEN) return true;
+  const provided = extractTermToken(req, url);
+  if (!provided || provided.length !== TERM_TOKEN.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(TERM_TOKEN));
+  } catch {
+    return false;
+  }
+}
+
+function attachTermSession(ws, reqUrl) {
+  if (termSessions.size >= TERM_MAX_SESSIONS) {
+    ws.close(1013, "Too many terminal sessions");
+    return;
+  }
+
+  const cols = Math.max(20, Number(reqUrl.searchParams.get("cols") || 120) || 120);
+  const rows = Math.max(5, Number(reqUrl.searchParams.get("rows") || 30) || 30);
+  const cwd = fs.existsSync(WORKSPACE_DIR) ? WORKSPACE_DIR : process.cwd();
+  const shellArgs = path.basename(TERM_SHELL) === "bash" ? ["-l"] : [];
+
+  let term;
+  try {
+    term = pty.spawn(TERM_SHELL, shellArgs, {
+      name: "xterm-256color",
+      cols,
+      rows,
+      cwd,
+      env: {
+        ...process.env,
+        TERM: "xterm-256color",
+        COLORTERM: "truecolor",
+        HOME: process.env.HOME || os.homedir() || "/root",
+      },
+    });
+  } catch (error) {
+    ws.send(JSON.stringify({ type: "error", message: `Failed to start PTY: ${error.message}` }));
+    ws.close(1011, "PTY spawn failed");
+    return;
+  }
+
+  const session = { ws, term, idleTimer: null };
+  termSessions.add(session);
+
+  const touch = () => {
+    if (session.idleTimer) clearTimeout(session.idleTimer);
+    if (TERM_IDLE_MS > 0) {
+      session.idleTimer = setTimeout(() => {
+        try {
+          ws.send(JSON.stringify({ type: "error", message: "Terminal idle timeout" }));
+        } catch {
+          // ignore
+        }
+        cleanup("idle");
+      }, TERM_IDLE_MS);
+    }
+  };
+
+  const cleanup = (reason) => {
+    if (!termSessions.has(session)) return;
+    termSessions.delete(session);
+    if (session.idleTimer) clearTimeout(session.idleTimer);
+    try {
+      term.kill();
+    } catch {
+      // ignore
+    }
+    if (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING) {
+      try {
+        ws.close(1000, reason || "closed");
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  touch();
+  ws.send(JSON.stringify({
+    type: "ready",
+    shell: TERM_SHELL,
+    cwd,
+    pid: term.pid,
+    cols,
+    rows,
+  }));
+
+  term.onData((data) => {
+    if (ws.readyState === ws.OPEN) {
+      ws.send(data);
+      touch();
+    }
+  });
+  term.onExit(({ exitCode, signal }) => {
+    try {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify({ type: "exit", exitCode, signal }));
+      }
+    } catch {
+      // ignore
+    }
+    cleanup("exit");
+  });
+
+  ws.on("message", (raw) => {
+    touch();
+    const text = Buffer.isBuffer(raw) ? raw.toString("utf8") : String(raw);
+    if (text.startsWith("{")) {
+      try {
+        const msg = JSON.parse(text);
+        if (msg && msg.type === "resize") {
+          const nextCols = Math.max(20, Number(msg.cols) || cols);
+          const nextRows = Math.max(5, Number(msg.rows) || rows);
+          term.resize(nextCols, nextRows);
+          return;
+        }
+        if (msg && msg.type === "input" && typeof msg.data === "string") {
+          term.write(msg.data);
+          return;
+        }
+      } catch {
+        // fall through: treat as raw input
+      }
+    }
+    term.write(text);
+  });
+
+  ws.on("close", () => cleanup("client"));
+  ws.on("error", () => cleanup("error"));
 }
 
 const server = http.createServer((req, res) => {
@@ -771,8 +967,27 @@ const server = http.createServer((req, res) => {
   serveStatic(req, res, url);
 });
 
+const wss = new WebSocketServer({ noServer: true });
+server.on("upgrade", (req, socket, head) => {
+  const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+  if (url.pathname !== "/ws/term") {
+    socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+    socket.destroy();
+    return;
+  }
+  if (!termAuthorized(req, url)) {
+    socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+    socket.destroy();
+    return;
+  }
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    attachTermSession(ws, url);
+  });
+});
+
 startRpc();
 server.listen(PORT, HOST, () => {
   console.log(`[pi-web] listening on http://${HOST}:${PORT}`);
   console.log(`[pi-web] workspace=${WORKSPACE_DIR} sessions=${SESSIONS_ROOT}`);
+  console.log(`[pi-web] terminal=/term ws=/ws/term shell=${TERM_SHELL} token=${TERM_TOKEN ? "required" : "off"}`);
 });

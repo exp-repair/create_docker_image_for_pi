@@ -103,6 +103,7 @@ HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
 echo ""
 echo "=========================================="
 echo "  Pi Web: http://${HOST_IP}:${PI_WEB_HOST_PORT:-6079}/"
+echo "  Term:   http://${HOST_IP}:${PI_WEB_HOST_PORT:-6079}/term"
 echo "  noVNC:  http://${HOST_IP}:6080/"
 echo "  VNC:    ${HOST_IP}:5901"
 echo "  logs:   ${DOCKER_BIN} logs -f ${NAME}"

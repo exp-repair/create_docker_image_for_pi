@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sandbox Terminal</title>
+  <link rel="stylesheet" href="/vendor/@xterm/xterm/css/xterm.css">
+  <link rel="stylesheet" href="/term.css">
+</head>
+<body>
+  <header class="term-bar">
+    <div class="term-brand">
+      <span class="sigil">$</span>
+      <div>
+        <p class="eyebrow">Container shell</p>
+        <h1>Sandbox Terminal</h1>
+      </div>
+    </div>
+    <div class="term-meta">
+      <span id="termStatus" class="status">连接中…</span>
+      <a class="ghost" href="/">Pi Console</a>
+      <button id="reconnect" class="ghost" type="button">重连</button>
+    </div>
+  </header>
+  <div id="terminal" class="terminal" aria-label="交互式终端"></div>
+
+  <script src="/vendor/@xterm/xterm/lib/xterm.js"></script>
+  <script src="/vendor/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <script src="/vendor/@xterm/addon-web-links/lib/addon-web-links.js"></script>
+  <script src="/term.js"></script>
+</body>
+</html>

@@ -515,6 +515,11 @@ els.prompt.addEventListener("keydown", (event) => {
 });
 
 (async function init() {
+  const termLink = document.getElementById("openTerminal");
+  if (termLink) {
+    const token = new URLSearchParams(window.location.search).get("token");
+    if (token) termLink.href = `/term?token=${encodeURIComponent(token)}`;
+  }
   connectEvents();
   await Promise.all([loadState(), loadSessions()]).catch((error) => addMessage("error", error.message, "stderr"));
   await loadMessages().catch(() => renderMessages([]));
