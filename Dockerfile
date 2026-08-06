@@ -17,6 +17,9 @@ ARG NPM_REGISTRY=
 
 USER root
 
+# Multica daemon in this image is started via nohup without a supervisor.
+# Auto-update would stage a new CLI and then stop the daemon permanently
+# ("not running under supervision"), so keep CLI version pinned to the image.
 ENV HOME=/root \
     PIP_ROOT_USER_ACTION=ignore \
     PYTHONUNBUFFERED=1 \
@@ -32,6 +35,7 @@ ENV HOME=/root \
     CODE_INTERPRETER_HOST=0.0.0.0 \
     CODE_INTERPRETER_PORT=49999 \
     CODE_INTERPRETER_WORKDIR=/workspace \
+    MULTICA_DAEMON_AUTO_UPDATE=false \
     PATH=/root/.local/bin:/root/.npm-global/bin:/root/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
 
 # Minimal OS surface for Pi, Multica daemon, db-bridge calls, VNC/noVNC,
