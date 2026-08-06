@@ -46,6 +46,7 @@ Cube template/sandbox, and configuring Pi + Cursor Agent + Multica at runtime.
 | `MULTICA_SERVER_URL`, `MULTICA_APP_URL`, `MULTICA_WORKSPACE_ID`, `MULTICA_TOKEN` | Required to configure Multica daemon. Defaults for URLs are `https://leagent.me` (headless stand-in for `multica setup self-host`). |
 | `MULTICA_PROFILE` | Optional profile name under `~/.multica/profiles/<name>`. |
 | `MULTICA_DAEMON_ENABLED` | `1` to run the daemon, `0` to keep it disabled. |
+| `MULTICA_DAEMON_AUTO_UPDATE` | Image default `false`. Keep disabled: the daemon is started without a supervisor, so auto-update would stop it permanently after staging a new CLI. |
 | `MULTICA_AUTOSTART` | `1` to start Multica during container entrypoint; otherwise use `start-multica-runtime.sh`. |
 | `CUBE_TEMPLATE_ID`, `CUBE_API_URL`, `CUBE_PROXY_HTTP` | Cube runtime sandbox creation settings. |
 | `ENABLE_SANDBOX_HOST_PROXY`, `HOST_PROXY_PORT`, `SANDBOX_PROXY_URL`, `SANDBOX_NO_PROXY` | Optional host-proxy settings for sandbox egress; use the host sing-box mixed proxy on `:7893`. |
