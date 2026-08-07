@@ -52,6 +52,8 @@ RUN apt-get update \
     fd-find \
     file \
     less \
+    nano \
+    vim-tiny \
     ripgrep \
     chromium \
     openbox \
@@ -157,17 +159,20 @@ RUN if [ "${INSTALL_CURSOR}" != "1" ]; then \
       cursor-agent --version || /usr/local/bin/cursor-agent --version; \
     fi
 
-COPY pi-web /opt/pi-web
-# WebTTY needs node-pty (native). Install build tools only for this step.
+# Install WebTTY native deps from lockfile first so source edits do not
+# re-download g++/make. node_modules survives the later COPY (context excludes it).
+COPY pi-web/package.json pi-web/package-lock.json /opt/pi-web/
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     python3 \
     make \
     g++ \
   && cd /opt/pi-web \
-  && npm install --omit=dev \
+  && npm ci --omit=dev \
   && apt-get purge -y --auto-remove make g++ \
   && rm -rf /var/lib/apt/lists/* /root/.npm/_cacache /tmp/* /var/tmp/*
+
+COPY pi-web /opt/pi-web
 
 # Remove the non-root working account inherited from the Cube base image. System
 # accounts such as nobody/daemon remain because Debian packages may rely on them.

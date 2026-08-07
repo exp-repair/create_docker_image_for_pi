@@ -3,7 +3,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 IMAGE="${IMAGE:-cube-leagent-template:local}"
-NAME="${NAME:-cube-leagent}"
+PROJECT_NAME="${PROJECT_NAME:-$(basename "$(pwd)")}"
+NAME="${NAME:-${PROJECT_NAME}-cube-leagent}"
 PI_CONFIG="${PI_CONFIG:-config/pi.env}"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
 HOST_PROXY_PORT="${HOST_PROXY_PORT:-7893}"
@@ -19,6 +20,13 @@ if [[ -f "${PI_CONFIG}" ]]; then
   echo "[run.sh] loaded runtime Pi config from ${PI_CONFIG}"
 fi
 
+# Host publish ports (high/uncommon defaults to avoid clashing with other sandboxes).
+# Applied after pi.env so unset values get these defaults; explicit env still wins.
+PI_WEB_HOST_PORT="${PI_WEB_HOST_PORT:-26079}"
+NOVNC_HOST_PORT="${NOVNC_HOST_PORT:-26080}"
+VNC_HOST_PORT="${VNC_HOST_PORT:-25901}"
+ENVD_HOST_PORT="${ENVD_HOST_PORT:-24983}"
+CODE_API_HOST_PORT="${CODE_API_HOST_PORT:-24999}"
 if [[ -z "${SANDBOX_PROXY_URL}" && "${ENABLE_SANDBOX_HOST_PROXY}" == "1" ]]; then
   SANDBOX_PROXY_URL="http://host.docker.internal:${HOST_PROXY_PORT}"
 fi
@@ -40,18 +48,18 @@ if [[ -n "${SANDBOX_PROXY_URL}" ]]; then
   fi
 fi
 
-OLD_IDS=$(${DOCKER_BIN} ps -aq --filter "ancestor=${IMAGE}" 2>/dev/null || true)
-if [[ -n "${OLD_IDS}" ]]; then
-  echo "[run.sh] stopping old containers: ${OLD_IDS}"
-  ${DOCKER_BIN} rm -f ${OLD_IDS} >/dev/null 2>&1 || true
-fi
+# Only replace the container managed by this script/name. Do not remove every
+# container created from the same image; users may keep other sandboxes around.
+echo "[run.sh] replacing managed container if it exists: ${NAME}"
 ${DOCKER_BIN} rm -f "${NAME}" >/dev/null 2>&1 || true
 
 echo "[run.sh] starting ${NAME} ..."
 ${DOCKER_BIN} run -d --name "${NAME}" \
-  -p ${PI_WEB_HOST_PORT:-6079}:6079 \
-  -p 6080:6080 -p 5901:5901 \
-  -p 49983:49983 -p 49999:49999 \
+  -p "${PI_WEB_HOST_PORT}:6079" \
+  -p "${NOVNC_HOST_PORT}:6080" \
+  -p "${VNC_HOST_PORT}:5901" \
+  -p "${ENVD_HOST_PORT}:49983" \
+  -p "${CODE_API_HOST_PORT}:49999" \
   -e DISPLAY=":0" \
   -e SCREEN_GEOM="${SCREEN_GEOM:-1920x1080x24}" \
   -e VNC_PORT="${VNC_PORT:-5901}" \
@@ -102,10 +110,12 @@ fi
 HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
 echo ""
 echo "=========================================="
-echo "  Pi Web: http://${HOST_IP}:${PI_WEB_HOST_PORT:-6079}/"
-echo "  Term:   http://${HOST_IP}:${PI_WEB_HOST_PORT:-6079}/term"
-echo "  noVNC:  http://${HOST_IP}:6080/"
-echo "  VNC:    ${HOST_IP}:5901"
+echo "  Pi Web: http://${HOST_IP}:${PI_WEB_HOST_PORT}/"
+echo "  Term:   http://${HOST_IP}:${PI_WEB_HOST_PORT}/term"
+echo "  noVNC:  http://${HOST_IP}:${NOVNC_HOST_PORT}/"
+echo "  VNC:    ${HOST_IP}:${VNC_HOST_PORT}"
+echo "  envd:   ${HOST_IP}:${ENVD_HOST_PORT}"
+echo "  code:   ${HOST_IP}:${CODE_API_HOST_PORT}"
 echo "  logs:   ${DOCKER_BIN} logs -f ${NAME}"
 echo "  shell:  ${DOCKER_BIN} exec -it ${NAME} bash"
 echo "=========================================="

@@ -48,6 +48,14 @@
     statusEl.className = `status${kind ? ` ${kind}` : ""}`;
   }
 
+  function proxyBasePath() {
+    const path = window.location.pathname;
+    const marker = "/term";
+    const idx = path.lastIndexOf(marker);
+    if (idx <= 0) return "";
+    return path.slice(0, idx).replace(/\/+$/, "");
+  }
+
   function wsUrl() {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     const dims = fitAddon.proposeDimensions() || { cols: term.cols, rows: term.rows };
@@ -56,7 +64,7 @@
       rows: String(dims.rows || 30),
     });
     if (token) q.set("token", token);
-    return `${proto}//${window.location.host}/ws/term?${q.toString()}`;
+    return `${proto}//${window.location.host}${proxyBasePath()}/ws/term?${q.toString()}`;
   }
 
   function sendResize() {
