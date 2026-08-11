@@ -17,9 +17,10 @@ ARG NPM_REGISTRY=
 
 USER root
 
-# Multica daemon in this image is started via nohup without a supervisor.
-# Auto-update would stage a new CLI and then stop the daemon permanently
-# ("not running under supervision"), so keep CLI version pinned to the image.
+# Multica daemon is started under a bash restart loop in
+# entrypoint-multica-daemon.sh (not OS install-service). That recovers from
+# crashes, but Multica's release auto-update still treats the process as
+# unsupervised and can stop it after staging — keep CLI version pinned.
 ENV HOME=/root \
     PIP_ROOT_USER_ACTION=ignore \
     PYTHONUNBUFFERED=1 \

@@ -156,7 +156,7 @@ curl -I https://www.google.com
   `/root/.cursor/runtime.env` from `CURSOR_API_KEY` / `MULTICA_CURSOR_*`, and
   adjusts `NO_PROXY` for Cursor API hosts when a proxy is set.
 - `scripts/start-multica-runtime.sh` dynamically configures Pi/Cursor/Multica
-  inside an already-created sandbox and starts the Multica daemon in the
-  background.
+  inside an already-created sandbox and starts the Multica daemon under a
+  restart loop (`entrypoint-multica-daemon.sh`, `MULTICA_DAEMON_SUPERVISE=1`).
 - `scripts/create-runtime-sandbox.sh` creates a Cube sandbox, injects runtime
   env, and invokes `start-multica-runtime.sh` through the Cube `/execute` API.

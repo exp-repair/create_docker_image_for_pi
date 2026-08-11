@@ -28,8 +28,8 @@ Cube template/sandbox, and configuring Pi + Cursor Agent + Multica at runtime.
 | `configure-pi-runtime.sh` | Writes Pi `models.json` / `settings.json`, including the `areal` provider for db-bridge. |
 | `configure-cursor-runtime.sh` | Resolves `cursor-agent`, writes `/root/.cursor/runtime.env` from `CURSOR_API_KEY` / `MULTICA_CURSOR_*`. |
 | `configure-multica-runtime.sh` | Writes Multica CLI/daemon config from runtime `MULTICA_*` values. |
-| `entrypoint-multica-daemon.sh` | Configures Pi/Cursor/Multica and runs `multica daemon start --foreground`. |
-| `start-multica-runtime.sh` | Reconfigures Pi/Cursor/Multica inside a running sandbox and starts the daemon in the background. |
+| `entrypoint-multica-daemon.sh` | Configures Pi/Cursor/Multica and runs `multica daemon start --foreground`, restarting it by default if it exits. |
+| `start-multica-runtime.sh` | Reconfigures Pi/Cursor/Multica inside a running sandbox and starts the supervised daemon in the background. |
 
 ## Key environment variables
 
@@ -46,7 +46,9 @@ Cube template/sandbox, and configuring Pi + Cursor Agent + Multica at runtime.
 | `MULTICA_SERVER_URL`, `MULTICA_APP_URL`, `MULTICA_WORKSPACE_ID`, `MULTICA_TOKEN` | Required to configure Multica daemon. Defaults for URLs are `https://leagent.me` (headless stand-in for `multica setup self-host`). |
 | `MULTICA_PROFILE` | Optional profile name under `~/.multica/profiles/<name>`. |
 | `MULTICA_DAEMON_ENABLED` | `1` to run the daemon, `0` to keep it disabled. |
-| `MULTICA_DAEMON_AUTO_UPDATE` | Image default `false`. Keep disabled: the daemon is started without a supervisor, so auto-update would stop it permanently after staging a new CLI. |
+| `MULTICA_DAEMON_SUPERVISE` | `1` (default) to restart `daemon start --foreground` when it exits; `0` for a one-shot run. |
+| `MULTICA_DAEMON_RESTART_DELAY_SEC` | Seconds to wait before restarting after an exit. Default `2`. |
+| `MULTICA_DAEMON_AUTO_UPDATE` | Image default `false`. Keep disabled: the bash restart loop is not Multica `install-service` supervision, so release auto-update can still stop the daemon after staging a new CLI. |
 | `MULTICA_AUTOSTART` | `1` to start Multica during container entrypoint; otherwise use `start-multica-runtime.sh`. |
 | `CUBE_TEMPLATE_ID`, `CUBE_API_URL`, `CUBE_PROXY_HTTP` | Cube runtime sandbox creation settings. |
 | `ENABLE_SANDBOX_HOST_PROXY`, `HOST_PROXY_PORT`, `SANDBOX_PROXY_URL`, `SANDBOX_NO_PROXY` | Optional host-proxy settings for sandbox egress; use the host sing-box mixed proxy on `:7893`. |

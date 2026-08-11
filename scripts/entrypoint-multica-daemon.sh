@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# Configure and start the Multica daemon in the foreground.
+# Configure and run the Multica daemon.
+#
+# By default this script supervises the daemon: if `multica daemon start
+# --foreground` exits for any reason, it is restarted after a short delay.
+# Set MULTICA_DAEMON_SUPERVISE=0 for a one-shot foreground run (debug).
 set -euo pipefail
 
 log() { echo "[entrypoint-multica-daemon] $*"; }
@@ -9,6 +13,9 @@ export PATH="/root/.local/bin:/root/.npm-global/bin:/root/.bun/bin:/usr/local/bi
 MULTICA_BIN="${MULTICA_BIN:-/usr/local/bin/multica}"
 MULTICA_PROFILE="${MULTICA_PROFILE:-}"
 MULTICA_DAEMON_ENABLED="${MULTICA_DAEMON_ENABLED:-1}"
+# Keep enabled by default so sandbox containers recover when the daemon dies.
+MULTICA_DAEMON_SUPERVISE="${MULTICA_DAEMON_SUPERVISE:-1}"
+MULTICA_DAEMON_RESTART_DELAY_SEC="${MULTICA_DAEMON_RESTART_DELAY_SEC:-2}"
 CURSOR_ENV_FILE="${CURSOR_ENV_FILE:-${HOME}/.cursor/runtime.env}"
 
 if [[ "${MULTICA_DAEMON_ENABLED}" != "1" ]]; then
@@ -43,5 +50,26 @@ if [[ -n "${MULTICA_PROFILE}" ]]; then
   args=(--profile "${MULTICA_PROFILE}" "${args[@]}")
 fi
 
-log "starting: ${MULTICA_BIN} ${args[*]}"
-exec "${MULTICA_BIN}" "${args[@]}"
+run_daemon_once() {
+  log "starting: ${MULTICA_BIN} ${args[*]}"
+  "${MULTICA_BIN}" "${args[@]}"
+}
+
+if [[ "${MULTICA_DAEMON_SUPERVISE}" != "1" ]]; then
+  exec "${MULTICA_BIN}" "${args[@]}"
+fi
+
+delay="${MULTICA_DAEMON_RESTART_DELAY_SEC}"
+if ! [[ "${delay}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  delay=2
+fi
+
+log "supervisor enabled (restart_delay=${delay}s)"
+while true; do
+  set +e
+  run_daemon_once
+  code=$?
+  set -e
+  log "daemon exited code=${code}; restarting in ${delay}s"
+  sleep "${delay}"
+done

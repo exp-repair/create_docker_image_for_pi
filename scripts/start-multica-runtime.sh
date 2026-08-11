@@ -64,12 +64,30 @@ PY
   fi
 }
 
+# Stop the supervised wrapper first so it cannot revive the daemon while we
+# reconfigure identity/token/profile, then stop any leftover foreground worker.
+stop_multica_daemon_supervisor() {
+  if command -v multica >/dev/null 2>&1; then
+    if [[ -n "${MULTICA_PROFILE:-}" ]]; then
+      multica --profile "${MULTICA_PROFILE}" daemon stop >/dev/null 2>&1 || true
+    else
+      multica daemon stop >/dev/null 2>&1 || true
+    fi
+  fi
+  pkill -f '/entrypoint-multica-daemon\.sh' >/dev/null 2>&1 || true
+  pkill -f 'multica.*daemon start --foreground' >/dev/null 2>&1 || true
+  sleep 1
+}
+
 resolve_sandbox_device_name
 
 export PATH="/root/.local/bin:/root/.npm-global/bin:/root/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
 CURSOR_ENV_FILE="${CURSOR_ENV_FILE:-${MULTICA_HOME}/.cursor/runtime.env}"
 
 mkdir -p "${MULTICA_HOME}/.multica"
+
+# Halt any previous supervisor before rewriting runtime config.
+stop_multica_daemon_supervisor
 
 if [[ -n "${TEAM_PI_CONFIG:-}" || -n "${TEAM_API_KEY:-}" || -n "${TEAM_BASE_URL:-}" || -n "${TEAM_MODEL:-}" || -n "${TEAM_PROVIDER:-}" || -n "${BRIDGE_USER_ID:-}" ]]; then
   configure-pi-runtime.sh
@@ -93,17 +111,15 @@ fi
 
 configure-multica-runtime.sh
 
-if command -v multica >/dev/null 2>&1; then
-  multica daemon stop >/dev/null 2>&1 || true
-fi
-pkill -f "multica.*daemon start --foreground" >/dev/null 2>&1 || true
+stop_multica_daemon_supervisor
 
-log "starting Multica daemon"
+log "starting Multica daemon supervisor"
 nohup /entrypoint-multica-daemon.sh >>"${MULTICA_HOME}/.multica/daemon.log" 2>&1 &
 
 sleep 2
-if pgrep -f "multica.*daemon start --foreground" >/dev/null 2>&1; then
-  log "daemon process started"
+if pgrep -f "multica.*daemon start --foreground" >/dev/null 2>&1 \
+  || pgrep -f '/entrypoint-multica-daemon\.sh' >/dev/null 2>&1; then
+  log "daemon supervisor started"
 else
   log "daemon process not running yet; check ${MULTICA_HOME}/.multica/daemon.log"
 fi
