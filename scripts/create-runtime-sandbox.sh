@@ -29,13 +29,31 @@ fi
 if [[ -z "${SANDBOX_PROXY_URL}" && "${ENABLE_SANDBOX_HOST_PROXY}" == "1" ]]; then
   SANDBOX_PROXY_URL="http://${HOST_IP}:${HOST_PROXY_PORT}"
 fi
-export SANDBOX_PROXY_URL SANDBOX_NO_PROXY
+LENOVO_MODELFACTORY_HOST="${LENOVO_MODELFACTORY_HOST:-modelfactory.lenovo.com}"
+LENOVO_MODELFACTORY_IP="${LENOVO_MODELFACTORY_IP:-10.110.158.101}"
+case ",${SANDBOX_NO_PROXY}," in
+  *",${LENOVO_MODELFACTORY_HOST},"*) ;;
+  *) SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY},${LENOVO_MODELFACTORY_HOST}" ;;
+esac
+case ",${SANDBOX_NO_PROXY}," in
+  *",${LENOVO_MODELFACTORY_IP},"*) ;;
+  *) SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY},${LENOVO_MODELFACTORY_IP}" ;;
+esac
+export SANDBOX_PROXY_URL SANDBOX_NO_PROXY LENOVO_MODELFACTORY_HOST LENOVO_MODELFACTORY_IP
 
-required=(TEAM_API_KEY TEAM_BASE_URL TEAM_MODEL MULTICA_SERVER_URL MULTICA_APP_URL MULTICA_WORKSPACE_ID MULTICA_TOKEN)
+required=(MULTICA_SERVER_URL MULTICA_APP_URL MULTICA_WORKSPACE_ID MULTICA_TOKEN)
 missing=()
 for key in "${required[@]}"; do
   [[ -n "${!key:-}" ]] || missing+=("${key}")
 done
+if [[ -z "${TEAM_API_KEY:-}" && -z "${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:-}" ]]; then
+  missing+=("TEAM_API_KEY|LENOVO_DEEPSEEK_V4_FLASH_API_KEY")
+fi
+if [[ -n "${TEAM_API_KEY:-}" ]]; then
+  for key in TEAM_BASE_URL TEAM_MODEL; do
+    [[ -n "${!key:-}" ]] || missing+=("${key}")
+  done
+fi
 if (( ${#missing[@]} > 0 )); then
   echo "[create-runtime-sandbox] missing required env: ${missing[*]}" >&2
   exit 1
@@ -72,16 +90,40 @@ echo "[create-runtime-sandbox] sandbox=${CUBE_SANDBOX_ID}"
 python3 - <<'PY' > /tmp/cube-start-multica-runtime.json
 import json, os
 runtime_env = {
-    "TEAM_API_KEY": os.environ["TEAM_API_KEY"],
-    "TEAM_BASE_URL": os.environ["TEAM_BASE_URL"],
-    "TEAM_MODEL": os.environ["TEAM_MODEL"],
-    "TEAM_API": os.environ.get("TEAM_API", "openai-responses"),
     "MULTICA_SERVER_URL": os.environ["MULTICA_SERVER_URL"],
     "MULTICA_APP_URL": os.environ["MULTICA_APP_URL"],
     "MULTICA_WORKSPACE_ID": os.environ["MULTICA_WORKSPACE_ID"],
     "MULTICA_TOKEN": os.environ["MULTICA_TOKEN"],
     "MULTICA_DAEMON_ENABLED": os.environ.get("MULTICA_DAEMON_ENABLED", "1"),
+    "NODE_EXTRA_CA_CERTS": os.environ.get(
+        "NODE_EXTRA_CA_CERTS",
+        "/root/.pi/agent/certs/lenovo-modelfactory-ca.pem",
+    ),
+    "LENOVO_DEEPSEEK_AS_DEFAULT": os.environ.get("LENOVO_DEEPSEEK_AS_DEFAULT", "1"),
+    "LENOVO_DEEPSEEK_PROVIDER": os.environ.get(
+        "LENOVO_DEEPSEEK_PROVIDER", "lenovo-deepseek-v4-flash"
+    ),
+    "LENOVO_DEEPSEEK_MODEL": os.environ.get(
+        "LENOVO_DEEPSEEK_MODEL", "DeepSeek-V4-Flash-0731"
+    ),
+    "LENOVO_DEEPSEEK_BASE_URL": os.environ.get(
+        "LENOVO_DEEPSEEK_BASE_URL",
+        "https://modelfactory.lenovo.com/service-large-600-1777255649450/llm/v1",
+    ),
+    "LENOVO_MODELFACTORY_HOST": os.environ.get(
+        "LENOVO_MODELFACTORY_HOST", "modelfactory.lenovo.com"
+    ),
+    "LENOVO_MODELFACTORY_IP": os.environ.get(
+        "LENOVO_MODELFACTORY_IP", "10.110.158.101"
+    ),
 }
+for required_team in ("TEAM_API_KEY", "TEAM_BASE_URL", "TEAM_MODEL"):
+    if os.environ.get(required_team):
+        runtime_env[required_team] = os.environ[required_team]
+if os.environ.get("TEAM_API"):
+    runtime_env["TEAM_API"] = os.environ["TEAM_API"]
+else:
+    runtime_env["TEAM_API"] = "openai-responses"
 proxy_url = os.environ.get("SANDBOX_PROXY_URL", "")
 if proxy_url:
     runtime_env.update({
@@ -105,6 +147,10 @@ for optional_key in (
     "CURSOR_API_KEY",
     "MULTICA_CURSOR_PATH",
     "MULTICA_CURSOR_MODEL",
+    "MULTICA_DAEMON_MODE",
+    "MULTICA_DAEMON_SUPERVISE",
+    "LENOVO_DEEPSEEK_V4_FLASH_API_KEY",
+    "LENOVO_DEEPSEEK_MODEL_NAME",
 ):
     if os.environ.get(optional_key):
         runtime_env[optional_key] = os.environ[optional_key]

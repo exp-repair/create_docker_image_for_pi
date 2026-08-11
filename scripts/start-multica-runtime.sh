@@ -64,8 +64,8 @@ PY
   fi
 }
 
-# Stop the supervised wrapper first so it cannot revive the daemon while we
-# reconfigure identity/token/profile, then stop any leftover foreground worker.
+# Stop the outer entrypoint loop first so it cannot revive the daemon while we
+# reconfigure identity/token/profile, then stop Multica supervise/worker procs.
 stop_multica_daemon_supervisor() {
   if command -v multica >/dev/null 2>&1; then
     if [[ -n "${MULTICA_PROFILE:-}" ]]; then
@@ -75,8 +75,15 @@ stop_multica_daemon_supervisor() {
     fi
   fi
   pkill -f '/entrypoint-multica-daemon\.sh' >/dev/null 2>&1 || true
+  pkill -f 'multica.*daemon supervise' >/dev/null 2>&1 || true
   pkill -f 'multica.*daemon start --foreground' >/dev/null 2>&1 || true
   sleep 1
+}
+
+multica_daemon_running() {
+  pgrep -f 'multica.*daemon supervise' >/dev/null 2>&1 \
+    || pgrep -f 'multica.*daemon start --foreground' >/dev/null 2>&1 \
+    || pgrep -f '/entrypoint-multica-daemon\.sh' >/dev/null 2>&1
 }
 
 resolve_sandbox_device_name
@@ -89,10 +96,10 @@ mkdir -p "${MULTICA_HOME}/.multica"
 # Halt any previous supervisor before rewriting runtime config.
 stop_multica_daemon_supervisor
 
-if [[ -n "${TEAM_PI_CONFIG:-}" || -n "${TEAM_API_KEY:-}" || -n "${TEAM_BASE_URL:-}" || -n "${TEAM_MODEL:-}" || -n "${TEAM_PROVIDER:-}" || -n "${BRIDGE_USER_ID:-}" ]]; then
+if [[ -n "${TEAM_PI_CONFIG:-}" || -n "${TEAM_API_KEY:-}" || -n "${TEAM_BASE_URL:-}" || -n "${TEAM_MODEL:-}" || -n "${TEAM_PROVIDER:-}" || -n "${BRIDGE_USER_ID:-}" || -n "${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:-}" ]]; then
   configure-pi-runtime.sh
 else
-  log "TEAM_PI_CONFIG / TEAM_* not provided; leaving Pi config unchanged"
+  log "TEAM_PI_CONFIG / TEAM_* / LENOVO_DEEPSEEK_V4_FLASH_API_KEY not provided; leaving Pi config unchanged"
 fi
 
 if command -v configure-cursor-runtime.sh >/dev/null 2>&1; then
@@ -113,12 +120,11 @@ configure-multica-runtime.sh
 
 stop_multica_daemon_supervisor
 
-log "starting Multica daemon supervisor"
+log "starting Multica daemon supervisor (daemon supervise + outer restart loop)"
 nohup /entrypoint-multica-daemon.sh >>"${MULTICA_HOME}/.multica/daemon.log" 2>&1 &
 
 sleep 2
-if pgrep -f "multica.*daemon start --foreground" >/dev/null 2>&1 \
-  || pgrep -f '/entrypoint-multica-daemon\.sh' >/dev/null 2>&1; then
+if multica_daemon_running; then
   log "daemon supervisor started"
 else
   log "daemon process not running yet; check ${MULTICA_HOME}/.multica/daemon.log"

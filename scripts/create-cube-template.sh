@@ -42,6 +42,22 @@ HOST_PROXY_PORT="${ENV_HOST_PROXY_PORT:-${HOST_PROXY_PORT:-7893}}"
 ENABLE_SANDBOX_HOST_PROXY="${ENV_ENABLE_SANDBOX_HOST_PROXY:-${ENABLE_SANDBOX_HOST_PROXY:-0}}"
 SANDBOX_PROXY_URL="${ENV_SANDBOX_PROXY_URL:-${SANDBOX_PROXY_URL:-}}"
 SANDBOX_NO_PROXY="${ENV_SANDBOX_NO_PROXY:-${SANDBOX_NO_PROXY:-localhost,127.0.0.1,::1,${HOST_IP},${CUBE_DEV_GATEWAY},10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc,.cluster.local}}"
+LENOVO_MODELFACTORY_HOST="${LENOVO_MODELFACTORY_HOST:-modelfactory.lenovo.com}"
+LENOVO_MODELFACTORY_IP="${LENOVO_MODELFACTORY_IP:-10.110.158.101}"
+
+# Always allow ModelFactory so Multica sandboxes can reach DeepSeek without extra config.
+case " ${ALLOW_OUT_CIDRS} " in
+  *" ${LENOVO_MODELFACTORY_IP}/32 "*|*" ${LENOVO_MODELFACTORY_IP} "*) ;;
+  *) ALLOW_OUT_CIDRS="${ALLOW_OUT_CIDRS} ${LENOVO_MODELFACTORY_IP}/32" ;;
+esac
+case ",${SANDBOX_NO_PROXY}," in
+  *",${LENOVO_MODELFACTORY_HOST},"*) ;;
+  *) SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY},${LENOVO_MODELFACTORY_HOST}" ;;
+esac
+case ",${SANDBOX_NO_PROXY}," in
+  *",${LENOVO_MODELFACTORY_IP},"*) ;;
+  *) SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY},${LENOVO_MODELFACTORY_IP}" ;;
+esac
 
 if [[ -z "${SANDBOX_PROXY_URL}" && "${ENABLE_SANDBOX_HOST_PROXY}" == "1" ]]; then
   SANDBOX_PROXY_URL="http://${HOST_IP}:${HOST_PROXY_PORT}"
@@ -64,6 +80,10 @@ test -x /entrypoint-multica-daemon.sh
 test -x /entrypoint-pi-web.sh
 test -x /usr/local/bin/multica
 test -f /opt/pi-web/server.js
+test -f /root/.pi/agent/models.json
+test -f /root/.pi/agent/settings.json
+grep -q "lenovo-deepseek-v4-flash" /root/.pi/agent/models.json
+grep -q "DeepSeek-V4-Flash-0731" /root/.pi/agent/settings.json
 command -v pi >/dev/null 2>&1 || test -x /root/.npm-global/bin/pi
 command -v cursor-agent >/dev/null 2>&1 || test -x /usr/local/bin/cursor-agent || test -x /root/.local/bin/cursor-agent
 ! id user >/dev/null 2>&1
@@ -119,6 +139,8 @@ create_args=(
   --env 'PI_WEB_HOST=0.0.0.0'
   --env 'PI_WEB_PORT=6079'
   --env 'PI_WEB_WORKSPACE=/workspace'
+  --env "LENOVO_MODELFACTORY_HOST=${LENOVO_MODELFACTORY_HOST}"
+  --env "LENOVO_MODELFACTORY_IP=${LENOVO_MODELFACTORY_IP}"
   "${proxy_env_args[@]}"
   "${allow_args[@]}"
   --json

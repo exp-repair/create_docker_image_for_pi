@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
-# Configure and run the Multica daemon.
+# Configure and run the Multica daemon under Multica's own supervisor.
 #
-# By default this script supervises the daemon: if `multica daemon start
-# --foreground` exits for any reason, it is restarted after a short delay.
-# Set MULTICA_DAEMON_SUPERVISE=0 for a one-shot foreground run (debug).
+# Architecture (matches `multica daemon install-service` intent, without
+# systemd --user which Cube/Docker sandboxes do not provide):
+#   1. This script's outer loop acts as the OS process manager: if
+#      `multica daemon supervise` itself exits, restart it.
+#   2. `daemon supervise` keeps the worker alive across crashes and, after a
+#      Machine Upgrade stages a new CLI, handoffs onto the Active version
+#      (exit 75) and force-restarts if the worker stays stuck on a stale build.
+#
+# Set MULTICA_DAEMON_MODE=foreground to fall back to `daemon start --foreground`
+# (debug only; upgrades may not reconnect cleanly).
+# Set MULTICA_DAEMON_SUPERVISE=0 for a one-shot run without the outer loop.
 set -euo pipefail
 
 log() { echo "[entrypoint-multica-daemon] $*"; }
@@ -13,9 +21,11 @@ export PATH="/root/.local/bin:/root/.npm-global/bin:/root/.bun/bin:/usr/local/bi
 MULTICA_BIN="${MULTICA_BIN:-/usr/local/bin/multica}"
 MULTICA_PROFILE="${MULTICA_PROFILE:-}"
 MULTICA_DAEMON_ENABLED="${MULTICA_DAEMON_ENABLED:-1}"
-# Keep enabled by default so sandbox containers recover when the daemon dies.
+# Outer bash loop: keep `daemon supervise` (or foreground) alive if it exits.
 MULTICA_DAEMON_SUPERVISE="${MULTICA_DAEMON_SUPERVISE:-1}"
 MULTICA_DAEMON_RESTART_DELAY_SEC="${MULTICA_DAEMON_RESTART_DELAY_SEC:-2}"
+# Prefer Multica's built-in supervisor so Machine Upgrade handoffs auto-restart.
+MULTICA_DAEMON_MODE="${MULTICA_DAEMON_MODE:-supervise}"
 CURSOR_ENV_FILE="${CURSOR_ENV_FILE:-${HOME}/.cursor/runtime.env}"
 
 if [[ "${MULTICA_DAEMON_ENABLED}" != "1" ]]; then
@@ -45,13 +55,26 @@ if ! configure-multica-runtime.sh; then
   exec sleep infinity
 fi
 
-args=(daemon start --foreground)
+case "${MULTICA_DAEMON_MODE}" in
+  supervise|foreground) ;;
+  *)
+    log "WARN: unknown MULTICA_DAEMON_MODE=${MULTICA_DAEMON_MODE}; using supervise"
+    MULTICA_DAEMON_MODE=supervise
+    ;;
+esac
+
+if [[ "${MULTICA_DAEMON_MODE}" == "supervise" ]]; then
+  args=(daemon supervise)
+else
+  args=(daemon start --foreground)
+fi
+
 if [[ -n "${MULTICA_PROFILE}" ]]; then
   args=(--profile "${MULTICA_PROFILE}" "${args[@]}")
 fi
 
 run_daemon_once() {
-  log "starting: ${MULTICA_BIN} ${args[*]}"
+  log "starting: ${MULTICA_BIN} ${args[*]} (mode=${MULTICA_DAEMON_MODE})"
   "${MULTICA_BIN}" "${args[@]}"
 }
 
@@ -64,12 +87,12 @@ if ! [[ "${delay}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
   delay=2
 fi
 
-log "supervisor enabled (restart_delay=${delay}s)"
+log "outer process manager enabled (restart_delay=${delay}s, mode=${MULTICA_DAEMON_MODE})"
 while true; do
   set +e
   run_daemon_once
   code=$?
   set -e
-  log "daemon exited code=${code}; restarting in ${delay}s"
+  log "multica ${MULTICA_DAEMON_MODE} exited code=${code}; restarting in ${delay}s"
   sleep "${delay}"
 done

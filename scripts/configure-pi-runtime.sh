@@ -2,6 +2,9 @@
 # Configure Pi provider credentials from runtime environment, not image layers.
 # Prefers TEAM_PI_CONFIG (multi-provider JSON). Falls back to TEAM_* flat env
 # for older Multica / sandboxd builds.
+#
+# When LENOVO_DEEPSEEK_V4_FLASH_API_KEY is set, also merges Lenovo ModelFactory
+# DeepSeek-V4-Flash into models.json and (by default) makes it the Pi default.
 set -euo pipefail
 
 log() { echo "[configure-pi-runtime] $*"; }
@@ -11,6 +14,9 @@ PI_HOME="${PI_HOME:-/root}"
 AGENT_DIR="${PI_AGENT_DIR:-${PI_HOME}/.pi/agent}"
 MODELS_FILE="${AGENT_DIR}/models.json"
 SETTINGS_FILE="${AGENT_DIR}/settings.json"
+CERTS_DIR="${AGENT_DIR}/certs"
+CA_CERT_FILE="${LENOVO_MODELFACTORY_CA_CERT:-${CERTS_DIR}/lenovo-modelfactory-ca.pem}"
+MODEL_FACTORY_ENV_FILE="${LENOVO_MODEL_FACTORY_ENV_FILE:-${AGENT_DIR}/model-factory.env}"
 TEAM_BASE_URL="${TEAM_BASE_URL:-https://claude-code.club/openai/v1}"
 TEAM_MODEL="${TEAM_MODEL:-gpt-5.5}"
 TEAM_PROVIDER="${TEAM_PROVIDER:-openai}"
@@ -20,14 +26,106 @@ AREAL_API="${AREAL_API:-openai-completions}"
 AREAL_API_KEY="${AREAL_API_KEY:-bridge}"
 BRIDGE_USER_ID="${BRIDGE_USER_ID:-}"
 
-if [[ -z "${TEAM_PI_CONFIG:-}" && -z "${TEAM_API_KEY:-}" ]]; then
-  log "WARN: TEAM_PI_CONFIG and TEAM_API_KEY are empty; Pi may still need an API key"
+LENOVO_DEEPSEEK_PROVIDER="${LENOVO_DEEPSEEK_PROVIDER:-lenovo-deepseek-v4-flash}"
+LENOVO_DEEPSEEK_MODEL="${LENOVO_DEEPSEEK_MODEL:-DeepSeek-V4-Flash-0731}"
+LENOVO_DEEPSEEK_BASE_URL="${LENOVO_DEEPSEEK_BASE_URL:-https://modelfactory.lenovo.com/service-large-600-1777255649450/llm/v1}"
+LENOVO_DEEPSEEK_MODEL_NAME="${LENOVO_DEEPSEEK_MODEL_NAME:-Lenovo ModelFactory DeepSeek V4 Flash}"
+LENOVO_MODELFACTORY_HOST="${LENOVO_MODELFACTORY_HOST:-modelfactory.lenovo.com}"
+LENOVO_MODELFACTORY_IP="${LENOVO_MODELFACTORY_IP:-10.110.158.101}"
+LENOVO_DEEPSEEK_AS_DEFAULT="${LENOVO_DEEPSEEK_AS_DEFAULT:-1}"
+LENOVO_DEEPSEEK_V4_FLASH_API_KEY="${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:-}"
+
+# Prefer image-baked key when runtime env did not inject one.
+if [[ -z "${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}" && -f "${MODEL_FACTORY_ENV_FILE}" ]]; then
+  # shellcheck disable=SC1090
+  set -a
+  # shellcheck disable=SC1090
+  source "${MODEL_FACTORY_ENV_FILE}"
+  set +a
+  LENOVO_DEEPSEEK_V4_FLASH_API_KEY="${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:-}"
+fi
+
+ensure_lenovo_ca() {
+  mkdir -p "${CERTS_DIR}"
+  if [[ ! -f "${CA_CERT_FILE}" ]]; then
+    if [[ -f /root/.pi/agent/certs/lenovo-modelfactory-ca.pem && "${CA_CERT_FILE}" != /root/.pi/agent/certs/lenovo-modelfactory-ca.pem ]]; then
+      cp /root/.pi/agent/certs/lenovo-modelfactory-ca.pem "${CA_CERT_FILE}"
+    else
+      log "WARN: Lenovo CA missing at ${CA_CERT_FILE}"
+      return 0
+    fi
+  fi
+  chmod 644 "${CA_CERT_FILE}" || true
+  export NODE_EXTRA_CA_CERTS="${NODE_EXTRA_CA_CERTS:-${CA_CERT_FILE}}"
+  # Keep interactive shells / later Pi processes trusting the CA without curl -k.
+  if [[ -d /etc/profile.d && -w /etc/profile.d ]]; then
+    printf '%s\n' \
+      "export NODE_EXTRA_CA_CERTS=\"\${NODE_EXTRA_CA_CERTS:-${CA_CERT_FILE}}\"" \
+      > /etc/profile.d/lenovo-modelfactory-ca.sh \
+      || log "WARN: could not write /etc/profile.d/lenovo-modelfactory-ca.sh"
+    chmod 644 /etc/profile.d/lenovo-modelfactory-ca.sh 2>/dev/null || true
+  fi
+  if [[ -w "${PI_HOME}" ]] && { [[ -f "${PI_HOME}/.bashrc" ]] || touch "${PI_HOME}/.bashrc" 2>/dev/null; }; then
+    if ! grep -q 'NODE_EXTRA_CA_CERTS=.*lenovo-modelfactory-ca.pem' "${PI_HOME}/.bashrc" 2>/dev/null; then
+      printf '\n# Lenovo ModelFactory CA for Pi/Node TLS\nexport NODE_EXTRA_CA_CERTS="%s"\n' \
+        "${CA_CERT_FILE}" >> "${PI_HOME}/.bashrc" || true
+    fi
+  fi
+}
+ensure_lenovo_dns() {
+  local host="${LENOVO_MODELFACTORY_HOST}"
+  local ip="${LENOVO_MODELFACTORY_IP}"
+  [[ -n "${host}" && -n "${ip}" ]] || return 0
+  if [[ ! -w /etc/hosts ]]; then
+    log "WARN: cannot write /etc/hosts for ${host} -> ${ip}"
+    return 0
+  fi
+  if grep -Eq "^[[:space:]]*${ip//./\\.}[[:space:]]+.*[[:space:]]${host}([[:space:]]|\$)" /etc/hosts \
+    || grep -Eq "^[[:space:]]*[0-9.]+[[:space:]]+.*[[:space:]]${host}([[:space:]]|\$)" /etc/hosts; then
+    # Replace any existing mapping for this hostname so stale DNS does not win.
+    local tmp
+    tmp="$(mktemp)"
+    awk -v h="${host}" -v ip="${ip}" '
+      $0 ~ /^[[:space:]]*#/ { print; next }
+      {
+        found=0
+        for (i=2; i<=NF; i++) if ($i == h) found=1
+        if (found) next
+        print
+      }
+      END { print ip " " h }
+    ' /etc/hosts > "${tmp}"
+    cat "${tmp}" > /etc/hosts
+    rm -f "${tmp}"
+  else
+    printf '%s %s\n' "${ip}" "${host}" >> /etc/hosts
+  fi
+  log "dns ${host} -> ${ip} (/etc/hosts)"
+}
+
+write_model_factory_env() {
+  local key="${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}"
+  [[ -n "${key}" ]] || return 0
+  mkdir -p "${AGENT_DIR}"
+  umask 077
+  cat > "${MODEL_FACTORY_ENV_FILE}" <<EOF
+LENOVO_DEEPSEEK_V4_FLASH_API_KEY=${key}
+EOF
+  chmod 600 "${MODEL_FACTORY_ENV_FILE}"
+  log "wrote ${MODEL_FACTORY_ENV_FILE}"
+}
+
+if [[ -z "${TEAM_PI_CONFIG:-}" && -z "${TEAM_API_KEY:-}" && -z "${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}" ]]; then
+  log "WARN: TEAM_PI_CONFIG / TEAM_API_KEY / LENOVO_DEEPSEEK_V4_FLASH_API_KEY are empty; Pi may still need an API key"
 fi
 if [[ -z "${BRIDGE_USER_ID}" ]]; then
   log "WARN: BRIDGE_USER_ID is empty; areal.headers.X-Bridge-User-Id will be blank"
 fi
 
 mkdir -p "${AGENT_DIR}"
+ensure_lenovo_ca
+ensure_lenovo_dns
+write_model_factory_env
 
 if command -v node >/dev/null 2>&1; then
   PI_MODELS_FILE="${MODELS_FILE}" \
@@ -42,6 +140,13 @@ if command -v node >/dev/null 2>&1; then
   AREAL_BASE_URL="${AREAL_BASE_URL}" \
   AREAL_API="${AREAL_API}" \
   AREAL_API_KEY="${AREAL_API_KEY}" \
+  LENOVO_DEEPSEEK_V4_FLASH_API_KEY="${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}" \
+  LENOVO_DEEPSEEK_PROVIDER="${LENOVO_DEEPSEEK_PROVIDER}" \
+  LENOVO_DEEPSEEK_MODEL="${LENOVO_DEEPSEEK_MODEL}" \
+  LENOVO_DEEPSEEK_BASE_URL="${LENOVO_DEEPSEEK_BASE_URL}" \
+  LENOVO_DEEPSEEK_MODEL_NAME="${LENOVO_DEEPSEEK_MODEL_NAME}" \
+  LENOVO_DEEPSEEK_AS_DEFAULT="${LENOVO_DEEPSEEK_AS_DEFAULT}" \
+  LENOVO_MODEL_FACTORY_ENV_FILE="${MODEL_FACTORY_ENV_FILE}" \
   node <<'NODE'
 const fs = require("node:fs");
 
@@ -96,7 +201,7 @@ function normalizeConfig() {
         };
       }
     } catch {
-      // fall through to TEAM_* 
+      // fall through to TEAM_*
     }
   }
   const name = String(process.env.TEAM_PROVIDER || "openai").trim() || "openai";
@@ -135,6 +240,41 @@ function upsertProvider(providers, entry) {
   providers[entry.name] = existing;
 }
 
+function mergeLenovoDeepseek(providers) {
+  const apiKey = String(process.env.LENOVO_DEEPSEEK_V4_FLASH_API_KEY || "").trim();
+  if (!apiKey) return false;
+  const name = String(process.env.LENOVO_DEEPSEEK_PROVIDER || "lenovo-deepseek-v4-flash").trim()
+    || "lenovo-deepseek-v4-flash";
+  const modelId = String(process.env.LENOVO_DEEPSEEK_MODEL || "DeepSeek-V4-Flash-0731").trim()
+    || "DeepSeek-V4-Flash-0731";
+  const envFile = String(process.env.LENOVO_MODEL_FACTORY_ENV_FILE || "/root/.pi/agent/model-factory.env").trim();
+  providers[name] = {
+    baseUrl: String(process.env.LENOVO_DEEPSEEK_BASE_URL || "").trim(),
+    api: "openai-completions",
+    // Prefer plaintext key so Pi works with zero runtime setup (Multica sandboxes).
+    apiKey: apiKey,
+    authHeader: true,
+    compat: {
+      supportsDeveloperRole: false,
+      supportsReasoningEffort: false,
+      supportsStore: false,
+      maxTokensField: "max_tokens",
+    },
+    models: [
+      {
+        id: modelId,
+        name: String(process.env.LENOVO_DEEPSEEK_MODEL_NAME || "Lenovo ModelFactory DeepSeek V4 Flash").trim(),
+        reasoning: false,
+        input: ["text"],
+        contextWindow: 524288,
+        maxTokens: 4096,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      },
+    ],
+  };
+  return { name, modelId };
+}
+
 const modelsPath = process.env.PI_MODELS_FILE;
 const settingsPath = process.env.PI_SETTINGS_FILE;
 const cfg = normalizeConfig();
@@ -142,23 +282,41 @@ const cfg = normalizeConfig();
 const models = readJson(modelsPath);
 const providers = models.providers && typeof models.providers === "object" ? { ...models.providers } : {};
 for (const entry of cfg.providers) {
+  // Only write TEAM_* providers when credentials/config were actually supplied.
+  const hasTeamCreds = Boolean(String(process.env.TEAM_API_KEY || "").trim())
+    || Boolean(String(process.env.TEAM_PI_CONFIG || "").trim());
+  if (!hasTeamCreds) continue;
   upsertProvider(providers, entry);
 }
 
+const lenovo = mergeLenovoDeepseek(providers);
 const next = { ...models, providers, areal: buildAreal() };
 fs.writeFileSync(modelsPath, `${JSON.stringify(next, null, 2)}\n`);
+try { fs.chmodSync(modelsPath, 0o600); } catch {}
 
 const settings = readJson(settingsPath);
-const defaultProvider = cfg.defaultProvider || "openai";
-const defaultModel = cfg.defaultModel || (cfg.providers[0] && cfg.providers[0].model) || "";
+const hasTeamCreds = Boolean(String(process.env.TEAM_API_KEY || "").trim())
+  || Boolean(String(process.env.TEAM_PI_CONFIG || "").trim());
+let defaultProvider = settings.defaultProvider || cfg.defaultProvider || "openai";
+let defaultModel = settings.defaultModel || cfg.defaultModel || (cfg.providers[0] && cfg.providers[0].model) || "";
+const asDefault = String(process.env.LENOVO_DEEPSEEK_AS_DEFAULT || "1").trim() !== "0";
+if (lenovo && asDefault) {
+  defaultProvider = lenovo.name;
+  defaultModel = lenovo.modelId;
+} else if (hasTeamCreds) {
+  defaultProvider = cfg.defaultProvider || defaultProvider;
+  defaultModel = cfg.defaultModel || defaultModel;
+}
 fs.writeFileSync(settingsPath, `${JSON.stringify({
   ...settings,
   defaultProvider,
   defaultModel,
   theme: settings.theme ?? "light",
 }, null, 2)}\n`);
+try { fs.chmodSync(settingsPath, 0o600); } catch {}
 
-console.log(`[configure-pi-runtime] providers=${cfg.providers.map((p) => p.name).join(",")} defaultProvider=${defaultProvider} defaultModel=${defaultModel}`);
+const providerNames = Object.keys(providers).join(",");
+console.log(`[configure-pi-runtime] providers=${providerNames} defaultProvider=${defaultProvider} defaultModel=${defaultModel}${lenovo ? " lenovo=on" : ""}`);
 NODE
 elif command -v python3 >/dev/null 2>&1; then
   PI_MODELS_FILE="${MODELS_FILE}" \
@@ -173,6 +331,13 @@ elif command -v python3 >/dev/null 2>&1; then
   AREAL_BASE_URL="${AREAL_BASE_URL}" \
   AREAL_API="${AREAL_API}" \
   AREAL_API_KEY="${AREAL_API_KEY}" \
+  LENOVO_DEEPSEEK_V4_FLASH_API_KEY="${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}" \
+  LENOVO_DEEPSEEK_PROVIDER="${LENOVO_DEEPSEEK_PROVIDER}" \
+  LENOVO_DEEPSEEK_MODEL="${LENOVO_DEEPSEEK_MODEL}" \
+  LENOVO_DEEPSEEK_BASE_URL="${LENOVO_DEEPSEEK_BASE_URL}" \
+  LENOVO_DEEPSEEK_MODEL_NAME="${LENOVO_DEEPSEEK_MODEL_NAME}" \
+  LENOVO_DEEPSEEK_AS_DEFAULT="${LENOVO_DEEPSEEK_AS_DEFAULT}" \
+  LENOVO_MODEL_FACTORY_ENV_FILE="${MODEL_FACTORY_ENV_FILE}" \
   python3 <<'PY'
 import json
 import os
@@ -266,6 +431,37 @@ def upsert_provider(providers, entry):
     providers[entry["name"]] = existing
 
 
+def merge_lenovo_deepseek(providers):
+    api_key = str(os.environ.get("LENOVO_DEEPSEEK_V4_FLASH_API_KEY") or "").strip()
+    if not api_key:
+        return None
+    name = str(os.environ.get("LENOVO_DEEPSEEK_PROVIDER") or "lenovo-deepseek-v4-flash").strip() or "lenovo-deepseek-v4-flash"
+    model_id = str(os.environ.get("LENOVO_DEEPSEEK_MODEL") or "DeepSeek-V4-Flash-0731").strip() or "DeepSeek-V4-Flash-0731"
+    env_file = str(os.environ.get("LENOVO_MODEL_FACTORY_ENV_FILE") or "/root/.pi/agent/model-factory.env").strip()
+    providers[name] = {
+        "baseUrl": str(os.environ.get("LENOVO_DEEPSEEK_BASE_URL") or "").strip(),
+        "api": "openai-completions",
+        "apiKey": api_key,
+        "authHeader": True,
+        "compat": {
+            "supportsDeveloperRole": False,
+            "supportsReasoningEffort": False,
+            "supportsStore": False,
+            "maxTokensField": "max_tokens",
+        },
+        "models": [{
+            "id": model_id,
+            "name": str(os.environ.get("LENOVO_DEEPSEEK_MODEL_NAME") or "Lenovo ModelFactory DeepSeek V4 Flash").strip(),
+            "reasoning": False,
+            "input": ["text"],
+            "contextWindow": 524288,
+            "maxTokens": 4096,
+            "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+        }],
+    }
+    return {"name": name, "modelId": model_id}
+
+
 models_path = Path(os.environ["PI_MODELS_FILE"])
 settings_path = Path(os.environ["PI_SETTINGS_FILE"])
 cfg = normalize_config()
@@ -273,18 +469,49 @@ cfg = normalize_config()
 models = read_json(models_path)
 providers = dict(models["providers"]) if isinstance(models.get("providers"), dict) else {}
 for entry in cfg["providers"]:
+    has_team_creds = bool(str(os.environ.get("TEAM_API_KEY") or "").strip()) or bool(
+        str(os.environ.get("TEAM_PI_CONFIG") or "").strip()
+    )
+    if not has_team_creds:
+        continue
     upsert_provider(providers, entry)
+
+lenovo = merge_lenovo_deepseek(providers)
 models["providers"] = providers
 models["areal"] = build_areal()
 models_path.write_text(json.dumps(models, indent=2) + "\n")
+try:
+    models_path.chmod(0o600)
+except Exception:
+    pass
 
 settings = read_json(settings_path)
-default_provider = cfg.get("defaultProvider") or "openai"
-default_model = cfg.get("defaultModel") or (cfg["providers"][0].get("model") if cfg["providers"] else "") or ""
+has_team_creds = bool(str(os.environ.get("TEAM_API_KEY") or "").strip()) or bool(
+    str(os.environ.get("TEAM_PI_CONFIG") or "").strip()
+)
+default_provider = settings.get("defaultProvider") or cfg.get("defaultProvider") or "openai"
+default_model = settings.get("defaultModel") or cfg.get("defaultModel") or (
+    cfg["providers"][0].get("model") if cfg["providers"] else ""
+) or ""
+as_default = str(os.environ.get("LENOVO_DEEPSEEK_AS_DEFAULT") or "1").strip() != "0"
+if lenovo and as_default:
+    default_provider = lenovo["name"]
+    default_model = lenovo["modelId"]
+elif has_team_creds:
+    default_provider = cfg.get("defaultProvider") or default_provider
+    default_model = cfg.get("defaultModel") or default_model
 settings.update({"defaultProvider": default_provider, "defaultModel": default_model})
 settings.setdefault("theme", "light")
 settings_path.write_text(json.dumps(settings, indent=2) + "\n")
-print(f"[configure-pi-runtime] providers={','.join(p['name'] for p in cfg['providers'])} defaultProvider={default_provider} defaultModel={default_model}")
+try:
+    settings_path.chmod(0o600)
+except Exception:
+    pass
+print(
+    f"[configure-pi-runtime] providers={','.join(providers.keys())} "
+    f"defaultProvider={default_provider} defaultModel={default_model}"
+    f"{' lenovo=on' if lenovo else ''}"
+)
 PY
 else
   log "ERROR: node or python3 is required to write Pi config" >&2
@@ -295,4 +522,4 @@ if [[ "$(id -u)" == "0" ]] && [[ "${PI_USER}" != "root" ]] && id "${PI_USER}" >/
   chown -R "${PI_USER}:${PI_USER}" "${AGENT_DIR}"
 fi
 
-log "configured TEAM_PI_CONFIG=${TEAM_PI_CONFIG:+set} TEAM_PROVIDER=${TEAM_PROVIDER} TEAM_API=${TEAM_API} TEAM_BASE_URL=${TEAM_BASE_URL} TEAM_MODEL=${TEAM_MODEL} areal.baseUrl=${AREAL_BASE_URL} bridgeUserId=${BRIDGE_USER_ID:-<empty>}"
+log "configured TEAM_PI_CONFIG=${TEAM_PI_CONFIG:+set} TEAM_PROVIDER=${TEAM_PROVIDER} TEAM_API=${TEAM_API} TEAM_BASE_URL=${TEAM_BASE_URL} TEAM_MODEL=${TEAM_MODEL} areal.baseUrl=${AREAL_BASE_URL} bridgeUserId=${BRIDGE_USER_ID:-<empty>} lenovoKey=${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:+set}"

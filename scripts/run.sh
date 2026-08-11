@@ -11,6 +11,8 @@ HOST_PROXY_PORT="${HOST_PROXY_PORT:-7893}"
 ENABLE_SANDBOX_HOST_PROXY="${ENABLE_SANDBOX_HOST_PROXY:-0}"
 SANDBOX_PROXY_URL="${SANDBOX_PROXY_URL:-}"
 SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY:-localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}"
+LENOVO_MODELFACTORY_HOST="${LENOVO_MODELFACTORY_HOST:-modelfactory.lenovo.com}"
+LENOVO_MODELFACTORY_IP="${LENOVO_MODELFACTORY_IP:-10.110.158.101}"
 
 if [[ -f "${PI_CONFIG}" ]]; then
   # shellcheck disable=SC1090
@@ -27,6 +29,18 @@ NOVNC_HOST_PORT="${NOVNC_HOST_PORT:-26080}"
 VNC_HOST_PORT="${VNC_HOST_PORT:-25901}"
 ENVD_HOST_PORT="${ENVD_HOST_PORT:-24983}"
 CODE_API_HOST_PORT="${CODE_API_HOST_PORT:-24999}"
+LENOVO_MODELFACTORY_HOST="${LENOVO_MODELFACTORY_HOST:-modelfactory.lenovo.com}"
+LENOVO_MODELFACTORY_IP="${LENOVO_MODELFACTORY_IP:-10.110.158.101}"
+SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY:-localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}"
+# Keep ModelFactory off the sandbox HTTP proxy path (intranet TLS endpoint).
+case ",${SANDBOX_NO_PROXY}," in
+  *",${LENOVO_MODELFACTORY_HOST},"*) ;;
+  *) SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY},${LENOVO_MODELFACTORY_HOST}" ;;
+esac
+case ",${SANDBOX_NO_PROXY}," in
+  *",${LENOVO_MODELFACTORY_IP},"*) ;;
+  *) SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY},${LENOVO_MODELFACTORY_IP}" ;;
+esac
 if [[ -z "${SANDBOX_PROXY_URL}" && "${ENABLE_SANDBOX_HOST_PROXY}" == "1" ]]; then
   SANDBOX_PROXY_URL="http://host.docker.internal:${HOST_PROXY_PORT}"
 fi
@@ -46,6 +60,11 @@ if [[ -n "${SANDBOX_PROXY_URL}" ]]; then
   if [[ "${SANDBOX_PROXY_URL}" == *host.docker.internal* ]]; then
     DOCKER_EXTRA_ARGS+=(--add-host=host.docker.internal:host-gateway)
   fi
+fi
+
+# Pin Lenovo ModelFactory hostname when cluster DNS is unavailable inside Docker.
+if [[ -n "${LENOVO_MODELFACTORY_HOST}" && -n "${LENOVO_MODELFACTORY_IP}" ]]; then
+  DOCKER_EXTRA_ARGS+=(--add-host="${LENOVO_MODELFACTORY_HOST}:${LENOVO_MODELFACTORY_IP}")
 fi
 
 # Only replace the container managed by this script/name. Do not remove every
@@ -77,6 +96,14 @@ ${DOCKER_BIN} run -d --name "${NAME}" \
   ${AREAL_BASE_URL:+-e AREAL_BASE_URL="${AREAL_BASE_URL}"} \
   ${AREAL_API:+-e AREAL_API="${AREAL_API}"} \
   ${AREAL_API_KEY:+-e AREAL_API_KEY="${AREAL_API_KEY}"} \
+  ${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:+-e LENOVO_DEEPSEEK_V4_FLASH_API_KEY="${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}"} \
+  -e LENOVO_DEEPSEEK_AS_DEFAULT="${LENOVO_DEEPSEEK_AS_DEFAULT:-1}" \
+  -e LENOVO_DEEPSEEK_PROVIDER="${LENOVO_DEEPSEEK_PROVIDER:-lenovo-deepseek-v4-flash}" \
+  -e LENOVO_DEEPSEEK_MODEL="${LENOVO_DEEPSEEK_MODEL:-DeepSeek-V4-Flash-0731}" \
+  -e LENOVO_DEEPSEEK_BASE_URL="${LENOVO_DEEPSEEK_BASE_URL:-https://modelfactory.lenovo.com/service-large-600-1777255649450/llm/v1}" \
+  -e LENOVO_MODELFACTORY_HOST="${LENOVO_MODELFACTORY_HOST}" \
+  -e LENOVO_MODELFACTORY_IP="${LENOVO_MODELFACTORY_IP}" \
+  -e NODE_EXTRA_CA_CERTS="${NODE_EXTRA_CA_CERTS:-/root/.pi/agent/certs/lenovo-modelfactory-ca.pem}" \
   ${MULTICA_SERVER_URL:+-e MULTICA_SERVER_URL="${MULTICA_SERVER_URL}"} \
   ${MULTICA_APP_URL:+-e MULTICA_APP_URL="${MULTICA_APP_URL}"} \
   ${MULTICA_WORKSPACE_ID:+-e MULTICA_WORKSPACE_ID="${MULTICA_WORKSPACE_ID}"} \
@@ -86,6 +113,8 @@ ${DOCKER_BIN} run -d --name "${NAME}" \
   ${MULTICA_CURSOR_PATH:+-e MULTICA_CURSOR_PATH="${MULTICA_CURSOR_PATH}"} \
   ${MULTICA_CURSOR_MODEL:+-e MULTICA_CURSOR_MODEL="${MULTICA_CURSOR_MODEL}"} \
   -e MULTICA_DAEMON_ENABLED="${MULTICA_DAEMON_ENABLED:-1}" \
+  -e MULTICA_DAEMON_MODE="${MULTICA_DAEMON_MODE:-supervise}" \
+  ${MULTICA_DAEMON_SUPERVISE:+-e MULTICA_DAEMON_SUPERVISE="${MULTICA_DAEMON_SUPERVISE}"} \
   "${DOCKER_EXTRA_ARGS[@]}" \
   --shm-size=2g \
   "${IMAGE}" "$@"
@@ -102,7 +131,10 @@ sleep 2
 echo "[run.sh] ensuring Multica daemon ..."
 if ${DOCKER_BIN} exec "${NAME}" test -x /entrypoint-multica-daemon.sh 2>/dev/null \
   && ${DOCKER_BIN} exec "${NAME}" sh -lc 'test -n "$MULTICA_SERVER_URL" && test -n "$MULTICA_APP_URL" && test -n "$MULTICA_WORKSPACE_ID" && test -n "$MULTICA_TOKEN"' 2>/dev/null; then
-  if ! ${DOCKER_BIN} exec "${NAME}" pgrep -f "multica.*daemon start --foreground" >/dev/null 2>&1; then
+  if ! ${DOCKER_BIN} exec "${NAME}" sh -lc \
+    'pgrep -f "multica.*daemon supervise" >/dev/null 2>&1 \
+      || pgrep -f "multica.*daemon start --foreground" >/dev/null 2>&1 \
+      || pgrep -f "/entrypoint-multica-daemon\\.sh" >/dev/null 2>&1'; then
     ${DOCKER_BIN} exec -d "${NAME}" /entrypoint-multica-daemon.sh || true
   fi
 fi
