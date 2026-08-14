@@ -162,6 +162,8 @@ EXTRA=(
   --build-arg "NODE_MAJOR=${NODE_MAJOR:-22}"
   --build-arg "APT_MIRROR=${APT_MIRROR:-https://mirrors.aliyun.com/debian}"
   --build-arg "APT_SECURITY_MIRROR=${APT_SECURITY_MIRROR:-https://mirrors.aliyun.com/debian-security}"
+  --build-arg "PIP_INDEX_URL=${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
+  --build-arg "PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST:-mirrors.aliyun.com}"
 )
 for proxy_key in HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy; do
   if [[ -n "${!proxy_key:-}" ]]; then
@@ -243,5 +245,6 @@ fi
 
 echo "[build.sh] SANDBOX_IMAGE=${SANDBOX_IMAGE}"
 echo "[build.sh] APT_MIRROR=${APT_MIRROR:-https://mirrors.aliyun.com/debian}"
+echo "[build.sh] PIP_INDEX_URL=${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
 echo "[build.sh] tag=${TAG}"
 docker build "${EXTRA[@]}" -t "${TAG}" .

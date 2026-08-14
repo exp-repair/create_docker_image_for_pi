@@ -76,8 +76,10 @@ ensure_lenovo_dns() {
   local host="${LENOVO_MODELFACTORY_HOST}"
   local ip="${LENOVO_MODELFACTORY_IP}"
   [[ -n "${host}" && -n "${ip}" ]] || return 0
+  # Cube sandboxes mount /etc/hosts as read-only tmpfs; Node uses
+  # /usr/local/lib/lenovo-modelfactory-dns-hook.js instead.
   if [[ ! -w /etc/hosts ]]; then
-    log "WARN: cannot write /etc/hosts for ${host} -> ${ip}"
+    log "WARN: /etc/hosts is read-only; relying on NODE DNS hook for ${host} -> ${ip}"
     return 0
   fi
   if grep -Eq "^[[:space:]]*${ip//./\\.}[[:space:]]+.*[[:space:]]${host}([[:space:]]|\$)" /etc/hosts \

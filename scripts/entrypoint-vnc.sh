@@ -13,8 +13,9 @@ BROWSER_START_URL="${BROWSER_START_URL:-https://www.baidu.com}"
 export DISPLAY="${DISPLAY:-:0}"
 
 echo "[entrypoint-vnc] DISPLAY=${DISPLAY} SCREEN=${SCREEN_GEOM} VNC=${VNC_PORT} noVNC=${NOVNC_PORT}"
+# Never let Pi config failures kill the live-view stack.
 if command -v configure-pi-runtime.sh >/dev/null 2>&1; then
-  configure-pi-runtime.sh
+  configure-pi-runtime.sh || echo "[entrypoint-vnc] WARN: configure-pi-runtime failed" >&2
 fi
 
 Xvfb "${DISPLAY}" -screen 0 "${SCREEN_GEOM}" -ac +extension RANDR +render -noreset &
@@ -23,6 +24,7 @@ XVFB_PID=$!
 cleanup() {
   echo "[entrypoint-vnc] shutting down..."
   kill "${CHROMIUM_PID:-}" 2>/dev/null || true
+  kill "${CDP_PROXY_PID:-}" 2>/dev/null || true
   kill "${OPENBOX_PID:-}" 2>/dev/null || true
   kill "${WEBSOCKIFY_PID:-}" 2>/dev/null || true
   kill "${X11VNC_PID:-}" 2>/dev/null || true
@@ -93,20 +95,54 @@ start_browser() {
 
   local width="${RESOLUTION_WIDTH:-1920}"
   local height="${RESOLUTION_HEIGHT:-1080}"
+  # Modern Chromium ignores --remote-debugging-address and only binds 127.0.0.1.
+  # Listen internally on CDP_INTERNAL_PORT, then socat publishes 0.0.0.0:CHROME_REMOTE_DEBUGGING_PORT
+  # so Cube/Multica can reach CDP through the sandbox proxy.
+  local cdp_public="${CHROME_REMOTE_DEBUGGING_PORT:-9223}"
+  local cdp_internal="${CHROME_CDP_INTERNAL_PORT:-$((cdp_public + 10000))}"
+  if [[ "${cdp_internal}" -eq "${cdp_public}" ]]; then
+    cdp_internal=19223
+  fi
+
   echo "[entrypoint-vnc] starting Chromium (${width}x${height} desktop): ${BROWSER_START_URL}"
   mkdir -p /data/browser-profile
   chromium \
     --no-sandbox \
     --disable-gpu \
     --disable-dev-shm-usage \
-    --remote-debugging-address=0.0.0.0 \
-    --remote-debugging-port="${CHROME_REMOTE_DEBUGGING_PORT:-9223}" \
+    --remote-debugging-port="${cdp_internal}" \
+    --remote-allow-origins="*" \
     --user-data-dir=/data/browser-profile \
     --start-maximized \
     --window-size="${width},${height}" \
     --window-position=0,0 \
     "${BROWSER_START_URL}" >/dev/null 2>&1 &
   CHROMIUM_PID=$!
+
+  # Wait briefly for Chromium CDP to bind before publishing.
+  for _ in $(seq 1 50); do
+    if (echo >"/dev/tcp/127.0.0.1/${cdp_internal}") >/dev/null 2>&1; then
+      break
+    fi
+    sleep 0.1
+  done
+
+  # Cube proxies use Host: 9223-<sid>.cube.app; Chromium rejects non-localhost Host.
+  # cdp-host-proxy rewrites Host and publishes on 0.0.0.0:cdp_public.
+  if [[ -x /usr/local/bin/cdp-host-proxy.py ]]; then
+    CHROME_REMOTE_DEBUGGING_PORT="${cdp_public}" \
+    CHROME_CDP_INTERNAL_PORT="${cdp_internal}" \
+      /usr/local/bin/cdp-host-proxy.py >/tmp/cdp-host-proxy.log 2>&1 &
+    CDP_PROXY_PID=$!
+    echo "[entrypoint-vnc] CDP host-proxy 0.0.0.0:${cdp_public} -> 127.0.0.1:${cdp_internal}"
+  elif command -v socat >/dev/null 2>&1; then
+    socat TCP-LISTEN:"${cdp_public}",bind=0.0.0.0,fork,reuseaddr TCP:127.0.0.1:"${cdp_internal}" >/dev/null 2>&1 &
+    CDP_PROXY_PID=$!
+    echo "[entrypoint-vnc] WARN: cdp-host-proxy missing; socat TCP-only (Cube Host header may 500)" >&2
+  else
+    echo "[entrypoint-vnc] WARN: no CDP publisher; CDP only on 127.0.0.1:${cdp_internal}" >&2
+  fi
+
   resize_browser_window "${width}" "${height}" &
 }
 
@@ -116,8 +152,11 @@ X11VNC_COMMON=(
   -forever
   -shared
   -rfbport "${VNC_PORT}"
-  -listen 0.0.0.0
+  # Only websockify on localhost needs VNC; avoid accidental external RFB clients.
+  -localhost
   -noxdamage
+  -wait 5
+  -deferupdate 10
 )
 
 if [[ -n "${VNC_PASSWORD:-}" ]]; then

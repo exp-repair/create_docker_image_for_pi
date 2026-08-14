@@ -1,12 +1,10 @@
 <!--
   Chromeless noVNC viewer for River's live browser view.
 
-  This page intentionally renders NO in-iframe chrome — no status bar, no
-  "Disconnected" pill, no toolbar. Connection state is reported to the
-  embedding window via `postMessage({type:"novnc:state", ...})` so the React
-  side panel can paint its own inactive / reconnecting placeholder. The
-  iframe stays mounted across reconnect attempts so the React parent does
-  not need to remount us.
+  Connection state is reported to the embedding window via
+  postMessage({type:"novnc:state", ...}). A minimal on-page status line is
+  shown until the first successful connect so a bare tab is not a silent
+  black screen.
 
   Posted message payloads (always include `type: "novnc:state"`):
     { state: "connecting", attempt }
@@ -18,12 +16,9 @@
 
   Query params we honor (set by backend `_build_live_view_url`):
     autoconnect=true        — ignored (always autoconnect)
-    resize=remote|scale|off — `remote` → RFB ExtendedDesktopSize (Xvfb
-                              resizes to viewport); `scale` → CSS scale
-                              (default in product because Chrome doesn't
-                              respond to X RandR); `off` → native pixels
-    view_only=true          — client-side view-only, defense-in-depth
-                              alongside the iframe `sandbox` attribute
+    resize=remote|scale|off — `remote` → RFB ExtendedDesktopSize; `scale`
+                              → CSS scale (default); `off` → native pixels
+    view_only=true          — client-side view-only
     path=<ws-path>          — websockify path (default `websockify`)
     password=<pw>           — optional VNC password
 -->
@@ -49,7 +44,6 @@
       width: 100vw;
       height: 100vh;
     }
-    /* noVNC internal container defaults to overflow:auto → scrollbars */
     #screen > div {
       width: 100% !important;
       height: 100% !important;
@@ -62,70 +56,106 @@
       display: block;
       margin: auto;
     }
+    #status {
+      position: fixed;
+      left: 12px;
+      bottom: 12px;
+      z-index: 10;
+      max-width: calc(100% - 24px);
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.55);
+      color: #d7d7db;
+      font: 12px/1.4 ui-sans-serif, system-ui, sans-serif;
+      pointer-events: none;
+      opacity: 1;
+      transition: opacity 0.3s ease;
+    }
+    #status[data-state="connected"] {
+      opacity: 0;
+    }
   </style>
 </head>
 <body>
   <div id="screen"></div>
+  <div id="status" data-state="connecting">Connecting…</div>
   <script type="module">
     import RFB from './core/rfb.js';
 
     const params = new URL(window.location.href).searchParams;
     const screenEl = document.getElementById('screen');
+    const statusEl = document.getElementById('status');
     const resize = params.get('resize') || 'scale';
     const viewOnly = params.get('view_only') === 'true';
     const password = params.get('password') || '';
 
-    // Auto-reconnect with exponential backoff. The WebSocket between noVNC
-    // and Daytona's edge proxy occasionally blips (iframe re-layout,
-    // Daytona edge restart, brief sandbox idle). Without a reconnect loop
-    // the viewer would lock into a "Disconnected" state until the user
-    // refreshes — which is confusing for a panel that always claims to be
-    // live. We cap at MAX_ATTEMPTS and then post a terminal `disconnected`
-    // state so the React parent can offer a manual retry. The attempt
-    // counter resets on a successful `connect` event.
     let rfb = null;
     let attempt = 0;
     let backoffTimer = null;
-    const MAX_ATTEMPTS = 10;
-    const BASE_DELAY_MS = 500;
-    const MAX_DELAY_MS = 8000;
+    let connecting = false;
+    const MAX_ATTEMPTS = 8;
+    const BASE_DELAY_MS = 800;
+    const MAX_DELAY_MS = 10000;
+
+    function setStatus(state, text) {
+      statusEl.dataset.state = state;
+      statusEl.textContent = text;
+    }
 
     function postState(payload) {
       try {
-        // We don't know the embedding origin (the React app may run on
-        // localhost in dev or any production hostname), and the payload
-        // is just connection-state metadata — no sensitive data, no auth
-        // tokens — so `*` is acceptable.
         window.parent.postMessage({ type: 'novnc:state', ...payload }, '*');
-      } catch (_) { /* ignore — postMessage to a same-origin parent or
-                       a parent that has navigated away should not crash
-                       the viewer. */ }
+      } catch (_) { /* ignore */ }
     }
 
     function buildSocketUrl() {
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      // noVNC's websockify proxy path; matches Daytona's default and
-      // vnc_lite.html's convention.
-      const path = params.get('path') || 'websockify';
-      return `${proto}//${window.location.host}/${path}`;
+      const raw = params.get('path') || 'websockify';
+      // Absolute path (e.g. /novnc-ws/<id>/websockify from app proxy).
+      if (raw.startsWith('/')) {
+        return `${proto}//${window.location.host}${raw}`;
+      }
+      // Gateway-style path containing slashes (e.g. 6080/<id>/websockify).
+      if (raw.includes('/')) {
+        return `${proto}//${window.location.host}/${raw.replace(/^\/+/, '')}`;
+      }
+      // Bare "websockify": resolve under the current directory so both
+      // container root (/) and path-gateway (/6080/<id>/) work.
+      let base = window.location.pathname || '/';
+      if (!base.endsWith('/')) {
+        base = base.replace(/\/[^/]*$/, '/');
+      }
+      if (!base.startsWith('/')) base = `/${base}`;
+      return `${proto}//${window.location.host}${base}${raw}`;
     }
 
     function tearDownRfb() {
       if (!rfb) return;
+      try {
+        rfb.removeEventListener('connect', onConnect);
+        rfb.removeEventListener('disconnect', onDisconnect);
+        rfb.removeEventListener('credentialsrequired', onCredentialsRequired);
+        rfb.removeEventListener('securityfailure', onSecurityFailure);
+        rfb.removeEventListener('desktopname', applyScale);
+        rfb.removeEventListener('resize', applyScale);
+      } catch (_) { /* ignore */ }
       try { rfb.disconnect(); } catch (_) { /* ignore */ }
       rfb = null;
+      connecting = false;
     }
 
     function scheduleReconnect(reason) {
       tearDownRfb();
       if (attempt >= MAX_ATTEMPTS) {
+        setStatus('disconnected', `Disconnected: ${reason || 'gave up'}`);
         postState({ state: 'disconnected', reason });
         return;
       }
       const delayMs = Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS);
-      postState({ state: 'reconnecting', attempt: attempt + 1, delayMs, reason });
-      backoffTimer = setTimeout(connect, delayMs);
       attempt += 1;
+      setStatus('reconnecting', `Reconnecting (${attempt}/${MAX_ATTEMPTS})…`);
+      postState({ state: 'reconnecting', attempt, delayMs, reason });
+      backoffTimer = setTimeout(connect, delayMs);
     }
 
     function applyScale() {
@@ -135,28 +165,59 @@
         rfb.scaleViewport = false;
         return;
       }
-      const rect = screenEl.getBoundingClientRect();
-      const fbW = rfb._display?.width ?? 0;
-      const fbH = rfb._display?.height ?? 0;
-      if (fbW <= 0 || fbH <= 0 || rect.width <= 0 || rect.height <= 0) {
-        rfb.scaleViewport = true;
-        return;
-      }
-      // Cover the noVNC viewport (fill the black frame; crop edges if needed).
-      rfb.scaleViewport = false;
-      rfb._display.scale = Math.max(rect.width / fbW, rect.height / fbH);
+      // Public API only — avoid private _display.scale (reconnect storms / layout races).
+      rfb.resizeSession = false;
+      rfb.scaleViewport = true;
+    }
+
+    function onConnect() {
+      attempt = 0;
+      connecting = false;
+      applyScale();
+      requestAnimationFrame(applyScale);
+      setStatus('connected', 'Connected');
+      postState({ state: 'connected' });
+    }
+
+    function onDisconnect(event) {
+      connecting = false;
+      const detail = event.detail || {};
+      scheduleReconnect(detail.reason || (detail.clean ? 'closed' : 'lost'));
+    }
+
+    function onCredentialsRequired() {
+      attempt = MAX_ATTEMPTS;
+      connecting = false;
+      setStatus('auth_required', 'VNC password required');
+      postState({ state: 'auth_required' });
+    }
+
+    function onSecurityFailure(event) {
+      attempt = MAX_ATTEMPTS;
+      connecting = false;
+      const detail = event.detail || {};
+      const reason = detail.reason || 'unknown';
+      setStatus('security_failure', `Security failure: ${reason}`);
+      postState({ state: 'security_failure', reason });
     }
 
     function connect() {
       backoffTimer = null;
+      if (connecting) return;
+      tearDownRfb();
+      connecting = true;
+      setStatus('connecting', attempt ? `Connecting (try ${attempt + 1})…` : 'Connecting…');
       postState({ state: 'connecting', attempt });
 
+      let url;
       try {
-        rfb = new RFB(screenEl, buildSocketUrl(), {
+        url = buildSocketUrl();
+        rfb = new RFB(screenEl, url, {
           credentials: { password },
           shared: true,
         });
       } catch (err) {
+        connecting = false;
         scheduleReconnect((err && err.message) || 'init_error');
         return;
       }
@@ -166,41 +227,30 @@
       rfb.scaleViewport = resize !== 'off';
       rfb.background = '#0b0b0d';
 
-      rfb.addEventListener('connect', () => {
-        attempt = 0;
-        applyScale();
-        requestAnimationFrame(applyScale);
-        postState({ state: 'connected' });
-      });
+      rfb.addEventListener('connect', onConnect);
       rfb.addEventListener('desktopname', applyScale);
       rfb.addEventListener('resize', applyScale);
-      rfb.addEventListener('disconnect', (event) => {
-        const detail = event.detail || {};
-        scheduleReconnect(detail.reason || (detail.clean ? 'closed' : 'lost'));
-      });
-      rfb.addEventListener('credentialsrequired', () => {
-        // Auth failures won't be fixed by retrying; stop the loop.
-        attempt = MAX_ATTEMPTS;
-        postState({ state: 'auth_required' });
-      });
-      rfb.addEventListener('securityfailure', (event) => {
-        attempt = MAX_ATTEMPTS;
-        const detail = event.detail || {};
-        postState({ state: 'security_failure', reason: detail.reason || 'unknown' });
-      });
+      rfb.addEventListener('disconnect', onDisconnect);
+      rfb.addEventListener('credentialsrequired', onCredentialsRequired);
+      rfb.addEventListener('securityfailure', onSecurityFailure);
     }
 
-    // Reset the reconnect budget if the user comes back to the panel after
-    // a long idle — they expect a fresh attempt, not a stale "gave up".
+    // Only retry on focus if we already gave up — do not open parallel sockets.
     window.addEventListener('focus', () => {
       if (rfb && rfb._rfbConnectionState === 'connected') return;
-      if (backoffTimer) { clearTimeout(backoffTimer); backoffTimer = null; }
+      if (connecting || backoffTimer) return;
+      if (attempt < MAX_ATTEMPTS) return;
       attempt = 0;
       connect();
     });
 
     window.addEventListener('resize', () => {
       applyScale();
+    });
+
+    window.addEventListener('beforeunload', () => {
+      if (backoffTimer) clearTimeout(backoffTimer);
+      tearDownRfb();
     });
 
     connect();

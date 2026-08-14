@@ -5,6 +5,8 @@ set -euo pipefail
 export HOME="${HOME:-/root}"
 export PATH="/root/.local/bin:/root/.npm-global/bin:/root/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
 export NODE_EXTRA_CA_CERTS="${NODE_EXTRA_CA_CERTS:-/root/.pi/agent/certs/lenovo-modelfactory-ca.pem}"
+# Cube mounts /etc/hosts as read-only tmpfs, so pin ModelFactory via Node dns hook.
+export NODE_OPTIONS="${NODE_OPTIONS:---require=/usr/local/lib/lenovo-modelfactory-dns-hook.js}"
 export DISPLAY="${DISPLAY:-:0}"
 export SCREEN_GEOM="${SCREEN_GEOM:-1920x1080x24}"
 export RESOLUTION="${RESOLUTION:-1920x1080x24}"

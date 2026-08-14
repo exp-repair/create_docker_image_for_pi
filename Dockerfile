@@ -17,6 +17,9 @@ ARG NPM_REGISTRY=
 # Debian apt mirror (empty = keep image default sources). China default: Aliyun.
 ARG APT_MIRROR=https://mirrors.aliyun.com/debian
 ARG APT_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
+# PyPI mirror for pip during image build. China default: Aliyun.
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
 
 USER root
 
@@ -47,6 +50,7 @@ ENV HOME=/root \
     LENOVO_DEEPSEEK_MODEL=DeepSeek-V4-Flash-0731 \
     LENOVO_DEEPSEEK_BASE_URL=https://modelfactory.lenovo.com/service-large-600-1777255649450/llm/v1 \
     LENOVO_DEEPSEEK_AS_DEFAULT=1 \
+    NODE_OPTIONS=--require=/usr/local/lib/lenovo-modelfactory-dns-hook.js \
     PATH=/root/.local/bin:/root/.npm-global/bin:/root/.bun/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
 
 # Minimal OS surface for Pi, Multica daemon, db-bridge calls, VNC/noVNC,
@@ -90,6 +94,7 @@ RUN set -eux; \
     xdotool \
     novnc \
     websockify \
+    socat \
     fontconfig \
     fonts-liberation \
     fonts-noto-cjk \
@@ -107,6 +112,7 @@ RUN set -eux; \
 
 COPY novnc-index.html /usr/share/novnc/index.html
 COPY lenovo-modelfactory-ca.pem /root/.pi/agent/certs/lenovo-modelfactory-ca.pem
+COPY scripts/lenovo-modelfactory-dns-hook.js /usr/local/lib/lenovo-modelfactory-dns-hook.js
 
 RUN mkdir -p /tmp/.X11-unix /workspace/uploads /workspace/browser-shots /data/browser-profile /root/.npm-global \
     /root/.pi/agent/certs \
@@ -122,7 +128,16 @@ RUN mkdir -p /tmp/.X11-unix /workspace/uploads /workspace/browser-shots /data/br
 WORKDIR /workspace
 
 COPY requirements.txt /tmp/leagent-requirements.txt
-RUN pip3 install --no-cache-dir -r /tmp/leagent-requirements.txt \
+RUN set -eux; \
+  pip_args="--no-cache-dir --default-timeout=120 --retries=5"; \
+  if [ -n "${PIP_INDEX_URL}" ]; then \
+    pip_args="${pip_args} -i ${PIP_INDEX_URL}"; \
+    echo "Using pip index: ${PIP_INDEX_URL}"; \
+  fi; \
+  if [ -n "${PIP_TRUSTED_HOST}" ]; then \
+    pip_args="${pip_args} --trusted-host ${PIP_TRUSTED_HOST}"; \
+  fi; \
+  pip3 install ${pip_args} -r /tmp/leagent-requirements.txt \
   && rm -f /tmp/leagent-requirements.txt
 
 COPY scripts/entrypoint-vnc.sh /entrypoint-vnc.sh
@@ -134,8 +149,10 @@ COPY scripts/configure-cursor-runtime.sh /usr/local/bin/configure-cursor-runtime
 COPY scripts/configure-multica-runtime.sh /usr/local/bin/configure-multica-runtime.sh
 COPY scripts/start-multica-runtime.sh /usr/local/bin/start-multica-runtime.sh
 COPY scripts/bake-pi-deepseek.sh /usr/local/bin/bake-pi-deepseek.sh
+COPY scripts/cdp-host-proxy.py /usr/local/bin/cdp-host-proxy.py
 COPY scripts/cont-init-browser.sh /etc/cont-init.d/99-browser-vnc
 RUN chmod +x /entrypoint-vnc.sh \
+    /usr/local/bin/cdp-host-proxy.py \
   /entrypoint-multica-daemon.sh \
   /entrypoint-pi-web.sh \
   /usr/local/bin/cube-start.sh \
@@ -172,7 +189,14 @@ RUN if [ "${INSTALL_PI}" != "1" ]; then \
       pi install "${PI_SUITE_SOURCE}"; \
     fi
 
-RUN ln -sf /root/.npm-global/bin/pi /usr/local/bin/pi \
+RUN ln -sf /root/.npm-global/bin/pi /usr/local/bin/pi.real \
+  && printf '%s\n' \
+       '#!/usr/bin/env bash' \
+       'export NODE_EXTRA_CA_CERTS="${NODE_EXTRA_CA_CERTS:-/root/.pi/agent/certs/lenovo-modelfactory-ca.pem}"' \
+       'export NODE_OPTIONS="${NODE_OPTIONS:---require=/usr/local/lib/lenovo-modelfactory-dns-hook.js}"' \
+       'exec /usr/local/bin/pi.real "$@"' \
+       > /usr/local/bin/pi \
+  && chmod +x /usr/local/bin/pi \
   && ln -sf /root/.npm-global/bin/pi-mcp-adapter /usr/local/bin/pi-mcp-adapter || true
 
 # Bake Lenovo ModelFactory DeepSeek into the image so Multica/Cube sandboxes

@@ -141,6 +141,8 @@ create_args=(
   --env 'PI_WEB_WORKSPACE=/workspace'
   --env "LENOVO_MODELFACTORY_HOST=${LENOVO_MODELFACTORY_HOST}"
   --env "LENOVO_MODELFACTORY_IP=${LENOVO_MODELFACTORY_IP}"
+  --env 'NODE_EXTRA_CA_CERTS=/root/.pi/agent/certs/lenovo-modelfactory-ca.pem'
+  --env 'NODE_OPTIONS=--require=/usr/local/lib/lenovo-modelfactory-dns-hook.js'
   "${proxy_env_args[@]}"
   "${allow_args[@]}"
   --json
