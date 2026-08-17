@@ -133,7 +133,9 @@ if ${DOCKER_BIN} exec "${NAME}" test -x /entrypoint-multica-daemon.sh 2>/dev/nul
   && ${DOCKER_BIN} exec "${NAME}" sh -lc 'test -n "$MULTICA_SERVER_URL" && test -n "$MULTICA_APP_URL" && test -n "$MULTICA_WORKSPACE_ID" && test -n "$MULTICA_TOKEN"' 2>/dev/null; then
   if ! ${DOCKER_BIN} exec "${NAME}" sh -lc \
     'pgrep -f "multica.*daemon supervise" >/dev/null 2>&1 \
+      || pgrep -f "multica.*computer supervise" >/dev/null 2>&1 \
       || pgrep -f "multica.*daemon start --foreground" >/dev/null 2>&1 \
+      || pgrep -f "multica.*computer start --foreground" >/dev/null 2>&1 \
       || pgrep -f "/entrypoint-multica-daemon\\.sh" >/dev/null 2>&1'; then
     ${DOCKER_BIN} exec -d "${NAME}" /entrypoint-multica-daemon.sh || true
   fi

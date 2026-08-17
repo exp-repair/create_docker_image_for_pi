@@ -68,21 +68,26 @@ PY
 # reconfigure identity/token/profile, then stop Multica supervise/worker procs.
 stop_multica_daemon_supervisor() {
   if command -v multica >/dev/null 2>&1; then
+    # Alpha Computer is machine-wide and rejects --profile.
+    multica computer stop >/dev/null 2>&1 || true
+    multica daemon stop >/dev/null 2>&1 || true
     if [[ -n "${MULTICA_PROFILE:-}" ]]; then
       multica --profile "${MULTICA_PROFILE}" daemon stop >/dev/null 2>&1 || true
-    else
-      multica daemon stop >/dev/null 2>&1 || true
     fi
   fi
   pkill -f '/entrypoint-multica-daemon\.sh' >/dev/null 2>&1 || true
   pkill -f 'multica.*daemon supervise' >/dev/null 2>&1 || true
+  pkill -f 'multica.*computer supervise' >/dev/null 2>&1 || true
   pkill -f 'multica.*daemon start --foreground' >/dev/null 2>&1 || true
+  pkill -f 'multica.*computer start --foreground' >/dev/null 2>&1 || true
   sleep 1
 }
 
 multica_daemon_running() {
   pgrep -f 'multica.*daemon supervise' >/dev/null 2>&1 \
+    || pgrep -f 'multica.*computer supervise' >/dev/null 2>&1 \
     || pgrep -f 'multica.*daemon start --foreground' >/dev/null 2>&1 \
+    || pgrep -f 'multica.*computer start --foreground' >/dev/null 2>&1 \
     || pgrep -f '/entrypoint-multica-daemon\.sh' >/dev/null 2>&1
 }
 
@@ -128,4 +133,19 @@ if multica_daemon_running; then
   log "daemon supervisor started"
 else
   log "daemon process not running yet; check ${MULTICA_HOME}/.multica/daemon.log"
+fi
+
+# Binding is re-read every ~5s; wait briefly so /execute logs show Connected.
+waited=0
+while (( waited < 20 )); do
+  if command -v multica >/dev/null 2>&1 \
+    && multica computer status 2>/dev/null | grep -Eq 'Connected:[[:space:]]*true'; then
+    log "Computer connected to Workspace"
+    break
+  fi
+  sleep 1
+  waited=$((waited + 1))
+done
+if (( waited >= 20 )); then
+  log "WARN: Computer did not report Connected=true within 20s; check ${MULTICA_HOME}/.multica/computer/bindings.json and computer status"
 fi

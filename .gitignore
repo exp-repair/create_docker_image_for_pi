@@ -1,3 +1,5 @@
 config/pi.env
+config/pi-test.env
 multica/
 pi-web/node_modules/
+logs/

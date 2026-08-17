@@ -35,6 +35,15 @@ state.
 ./scripts/build.sh
 ```
 
+Test/alpha daemon image (latest alpha from `metainfo.json` `environments.test`, currently the same feed as `install.sh --version v0.4.24-alpha.79`). Does not change the production build:
+
+```bash
+./scripts/build-test.sh
+./scripts/run-test.sh
+```
+
+That image is tagged `cube-leagent-template-test:local` and uses different host ports so it can run next to the production container. The test container connects to the Tencent Cloud test origin (`https://82.157.184.89` by default), seeds `$HOME/.local/bin/multica` so Machine Upgrade can swap and restart, and keeps `daemon/computer supervise` running.
+
 Useful build overrides:
 
 ```bash

@@ -7,6 +7,8 @@ Cube template/sandbox, and configuring Pi + Cursor Agent + Multica at runtime.
 
 1. `build.sh` builds `cube-leagent-template:local` from the lightweight Cube base.
 2. `run.sh` starts a local debug container with Pi web, noVNC/VNC, and Code API ports.
+   For the test/alpha daemon image, use `build-test.sh` / `run-test.sh` instead
+   (`cube-leagent-template-test:local`).
 3. `diagnose.sh` checks browser, Pi, Cursor Agent, Multica, and Cube API health.
 4. `create-cube-template.sh` registers the local image as a Cube sandbox template.
 5. `create-runtime-sandbox.sh` creates a sandbox, injects runtime secrets/config,
@@ -17,7 +19,10 @@ Cube template/sandbox, and configuring Pi + Cursor Agent + Multica at runtime.
 | Script | Purpose |
 | --- | --- |
 | `build.sh` | Downloads or reuses the Multica binary from `https://cdn.leagent.me/computer` via `metainfo.json` (same feed as `install.sh`), then builds the image. Supports `MULTICA_VERSION=latest|test|vX.Y.Z`, `APT_MIRROR` / `APT_SECURITY_MIRROR` (default Aliyun Debian mirrors), `TAG`, `SANDBOX_IMAGE`, `NODE_MAJOR`, `INSTALL_PI`, `INSTALL_CURSOR`, `PI_SUITE_VERSION`, `NPM_REGISTRY`, `MULTICA_SKIP_DOWNLOAD`, `MULTICA_FORCE_DOWNLOAD`, `MULTICA_LOCAL_BIN`, `MULTICA_RELEASE_MANIFEST_BASE_URL`, and standard proxy build args. |
+| `build-test.sh` | Independent test/alpha image build. Default tag `cube-leagent-template-test:local`, default `MULTICA_VERSION=test` (latest alpha, same as `install.sh --version v0.4.24-alpha.79`). Caches the binary under `multica/bin-test/` so `build.sh` is not affected. |
 | `run.sh` | Runs the image locally, maps `6079`, `6080`, `5901`, `49983`, `49999`, and passes `TEAM_*`, `AREAL_*`, `BRIDGE_USER_ID`, `CURSOR_API_KEY`, `MULTICA_*`, and optional sandbox proxy env values. Uses `DOCKER_BIN` when set. |
+| `run-test.sh` | Independent runner for the test image. Default container name suffix `-cube-leagent-test` and host ports `27079` / `27080` / `26901` / `25983` / `25999`. |
+| `watch-test-daemon.sh` | Every 3 hours (cron) fetches `metainfo.json` `environments.test.tag` and rebuilds `cube-leagent-template-test:local` only when that alpha version changes. Logs to `logs/watch-test-daemon.log`. |
 | `diagnose.sh` | Prints container state, listening ports, important binaries, Pi/Cursor/Multica versions, and host HTTP checks. Uses `DOCKER_BIN` when set. |
 | `create-cube-template.sh` | Converts the image into a Cube template, exposing `6079`, `6080`, and `9223`, probing `49999/health`, and writing `.cube-template.env`. |
 | `create-runtime-sandbox.sh` | Creates a Cube sandbox and invokes `start-multica-runtime.sh` through `/execute` to configure Pi/Cursor/Multica after creation. |
@@ -47,6 +52,7 @@ Cube template/sandbox, and configuring Pi + Cursor Agent + Multica at runtime.
 | `MULTICA_CURSOR_MODEL` | Optional Multica default model for Cursor Agent. |
 | `INSTALL_CURSOR` | Build-time flag (`1`/`0`) to install Cursor Agent CLI into the image. |
 | `MULTICA_SERVER_URL`, `MULTICA_APP_URL`, `MULTICA_WORKSPACE_ID`, `MULTICA_TOKEN` | Required to configure Multica daemon. Defaults for URLs are `https://leagent.me` (headless stand-in for `multica setup self-host`). |
+| `MULTICA_ENVIRONMENT` | `test` writes `environment=test` / `release_channel=alpha` so Machine Upgrade follows preview packages. Production runs omit this (or set `production`). Test origin cannot be `leagent.me`; `run-test.sh` defaults to `https://82.157.184.89`. |
 | `MULTICA_PROFILE` | Optional profile name under `~/.multica/profiles/<name>`. |
 | `MULTICA_DAEMON_ENABLED` | `1` to run the daemon, `0` to keep it disabled. |
 | `MULTICA_DAEMON_MODE` | `supervise` (default, recommended) runs `multica daemon supervise` so Machine Upgrade handoffs auto-restart onto the staged CLI; `foreground` uses `daemon start --foreground` for debug. |

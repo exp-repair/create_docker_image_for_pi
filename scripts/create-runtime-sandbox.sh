@@ -144,6 +144,7 @@ for optional_key in (
     "AREAL_API",
     "AREAL_API_KEY",
     "MULTICA_PROFILE",
+    "MULTICA_ENVIRONMENT",
     "CURSOR_API_KEY",
     "MULTICA_CURSOR_PATH",
     "MULTICA_CURSOR_MODEL",
