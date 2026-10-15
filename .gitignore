@@ -1,4 +1,5 @@
 config/pi.env
+coforge/coforge-computer
 config/pi-test.env
 multica/
 pi-web/node_modules/

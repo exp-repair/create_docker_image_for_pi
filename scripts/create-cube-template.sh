@@ -82,8 +82,8 @@ test -x /usr/local/bin/multica
 test -f /opt/pi-web/server.js
 test -f /root/.pi/agent/models.json
 test -f /root/.pi/agent/settings.json
-grep -q "lenovo-deepseek-v4-flash" /root/.pi/agent/models.json
-grep -q "DeepSeek-V4-Flash-0731" /root/.pi/agent/settings.json
+grep -q "https://modelfactory.lenovo.com/llm/v1" /root/.pi/agent/models.json
+grep -q '"defaultModel": "DeepSeek"' /root/.pi/agent/settings.json
 command -v pi >/dev/null 2>&1 || test -x /root/.npm-global/bin/pi
 command -v cursor-agent >/dev/null 2>&1 || test -x /usr/local/bin/cursor-agent || test -x /root/.local/bin/cursor-agent
 ! id user >/dev/null 2>&1

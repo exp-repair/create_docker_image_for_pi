@@ -2,9 +2,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-IMAGE="${IMAGE:-cube-leagent-template:local}"
-PROJECT_NAME="${PROJECT_NAME:-$(basename "$(pwd)")}"
-NAME="${NAME:-${PROJECT_NAME}-cube-leagent}"
+IMAGE="${IMAGE:-coforge-pi:local}"
+NAME="${NAME:-coforge-pi}"
 PI_CONFIG="${PI_CONFIG:-config/pi.env}"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
 HOST_PROXY_PORT="${HOST_PROXY_PORT:-7893}"
@@ -22,13 +21,9 @@ if [[ -f "${PI_CONFIG}" ]]; then
   echo "[run.sh] loaded runtime Pi config from ${PI_CONFIG}"
 fi
 
-# Host publish ports (high/uncommon defaults to avoid clashing with other sandboxes).
-# Applied after pi.env so unset values get these defaults; explicit env still wins.
+# Host publish port for the web terminal.
+# Applied after pi.env so unset values get this default; explicit env still wins.
 PI_WEB_HOST_PORT="${PI_WEB_HOST_PORT:-26079}"
-NOVNC_HOST_PORT="${NOVNC_HOST_PORT:-26080}"
-VNC_HOST_PORT="${VNC_HOST_PORT:-25901}"
-ENVD_HOST_PORT="${ENVD_HOST_PORT:-24983}"
-CODE_API_HOST_PORT="${CODE_API_HOST_PORT:-24999}"
 LENOVO_MODELFACTORY_HOST="${LENOVO_MODELFACTORY_HOST:-modelfactory.lenovo.com}"
 LENOVO_MODELFACTORY_IP="${LENOVO_MODELFACTORY_IP:-10.110.158.101}"
 SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY:-localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}"
@@ -73,20 +68,17 @@ echo "[run.sh] replacing managed container if it exists: ${NAME}"
 ${DOCKER_BIN} rm -f "${NAME}" >/dev/null 2>&1 || true
 
 echo "[run.sh] starting ${NAME} ..."
+# The bundled Computer binary talks to CoForge on the host loopback, so the
+# container joins the host network instead of publishing a bridge port.
 ${DOCKER_BIN} run -d --name "${NAME}" \
-  -p "${PI_WEB_HOST_PORT}:6079" \
-  -p "${NOVNC_HOST_PORT}:6080" \
-  -p "${VNC_HOST_PORT}:5901" \
-  -p "${ENVD_HOST_PORT}:49983" \
-  -p "${CODE_API_HOST_PORT}:49999" \
-  -e DISPLAY=":0" \
-  -e SCREEN_GEOM="${SCREEN_GEOM:-1920x1080x24}" \
-  -e VNC_PORT="${VNC_PORT:-5901}" \
-  -e NOVNC_PORT="${NOVNC_PORT:-6080}" \
+  --network host \
   -e PI_WEB_HOST="0.0.0.0" \
-  -e PI_WEB_PORT="6079" \
+  -e PI_WEB_PORT="${PI_WEB_HOST_PORT}" \
+  -e COFORGE_WORKSPACE_SLUG="${COFORGE_WORKSPACE_SLUG:-my}" \
   -e PI_WEB_WORKSPACE="${PI_WORKSPACE_DIR:-/workspace}" \
-  ${VNC_PASSWORD:+-e VNC_PASSWORD="${VNC_PASSWORD}"} \
+  -e PI_WEB_CONSOLE="0" \
+  -e PI_WEB_TERM_SHELL="${PI_WEB_TERM_SHELL:-/bin/bash}" \
+  ${PI_WEB_TERM_TOKEN:+-e PI_WEB_TERM_TOKEN="${PI_WEB_TERM_TOKEN}"} \
   ${TEAM_API_KEY:+-e TEAM_API_KEY="${TEAM_API_KEY}"} \
   -e TEAM_BASE_URL="${TEAM_BASE_URL:-https://claude-code.club/openai/v1}" \
   -e TEAM_MODEL="${TEAM_MODEL:-gpt-5.5}" \
@@ -98,58 +90,21 @@ ${DOCKER_BIN} run -d --name "${NAME}" \
   ${AREAL_API_KEY:+-e AREAL_API_KEY="${AREAL_API_KEY}"} \
   ${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:+-e LENOVO_DEEPSEEK_V4_FLASH_API_KEY="${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}"} \
   -e LENOVO_DEEPSEEK_AS_DEFAULT="${LENOVO_DEEPSEEK_AS_DEFAULT:-1}" \
-  -e LENOVO_DEEPSEEK_PROVIDER="${LENOVO_DEEPSEEK_PROVIDER:-lenovo-deepseek-v4-flash}" \
-  -e LENOVO_DEEPSEEK_MODEL="${LENOVO_DEEPSEEK_MODEL:-DeepSeek-V4-Flash-0731}" \
-  -e LENOVO_DEEPSEEK_BASE_URL="${LENOVO_DEEPSEEK_BASE_URL:-https://modelfactory.lenovo.com/service-large-600-1777255649450/llm/v1}" \
+  -e LENOVO_DEEPSEEK_PROVIDER="${LENOVO_DEEPSEEK_PROVIDER:-openai}" \
+  -e LENOVO_DEEPSEEK_MODEL="${LENOVO_DEEPSEEK_MODEL:-DeepSeek}" \
+  -e LENOVO_DEEPSEEK_BASE_URL="${LENOVO_DEEPSEEK_BASE_URL:-https://modelfactory.lenovo.com/llm/v1}" \
   -e LENOVO_MODELFACTORY_HOST="${LENOVO_MODELFACTORY_HOST}" \
   -e LENOVO_MODELFACTORY_IP="${LENOVO_MODELFACTORY_IP}" \
   -e NODE_EXTRA_CA_CERTS="${NODE_EXTRA_CA_CERTS:-/root/.pi/agent/certs/lenovo-modelfactory-ca.pem}" \
-  ${MULTICA_SERVER_URL:+-e MULTICA_SERVER_URL="${MULTICA_SERVER_URL}"} \
-  ${MULTICA_APP_URL:+-e MULTICA_APP_URL="${MULTICA_APP_URL}"} \
-  ${MULTICA_WORKSPACE_ID:+-e MULTICA_WORKSPACE_ID="${MULTICA_WORKSPACE_ID}"} \
-  ${MULTICA_TOKEN:+-e MULTICA_TOKEN="${MULTICA_TOKEN}"} \
-  ${MULTICA_PROFILE:+-e MULTICA_PROFILE="${MULTICA_PROFILE}"} \
-  ${CURSOR_API_KEY:+-e CURSOR_API_KEY="${CURSOR_API_KEY}"} \
-  ${MULTICA_CURSOR_PATH:+-e MULTICA_CURSOR_PATH="${MULTICA_CURSOR_PATH}"} \
-  ${MULTICA_CURSOR_MODEL:+-e MULTICA_CURSOR_MODEL="${MULTICA_CURSOR_MODEL}"} \
-  -e MULTICA_DAEMON_ENABLED="${MULTICA_DAEMON_ENABLED:-1}" \
-  -e MULTICA_DAEMON_MODE="${MULTICA_DAEMON_MODE:-supervise}" \
-  ${MULTICA_DAEMON_SUPERVISE:+-e MULTICA_DAEMON_SUPERVISE="${MULTICA_DAEMON_SUPERVISE}"} \
   "${DOCKER_EXTRA_ARGS[@]}" \
-  --shm-size=2g \
   "${IMAGE}" "$@"
 
-sleep 5
-
-echo "[run.sh] ensuring VNC stack ..."
-if ${DOCKER_BIN} exec "${NAME}" test -x /etc/cont-init.d/99-browser-vnc 2>/dev/null; then
-  ${DOCKER_BIN} exec "${NAME}" /etc/cont-init.d/99-browser-vnc || true
-fi
-
 sleep 2
-
-echo "[run.sh] ensuring Multica daemon ..."
-if ${DOCKER_BIN} exec "${NAME}" test -x /entrypoint-multica-daemon.sh 2>/dev/null \
-  && ${DOCKER_BIN} exec "${NAME}" sh -lc 'test -n "$MULTICA_SERVER_URL" && test -n "$MULTICA_APP_URL" && test -n "$MULTICA_WORKSPACE_ID" && test -n "$MULTICA_TOKEN"' 2>/dev/null; then
-  if ! ${DOCKER_BIN} exec "${NAME}" sh -lc \
-    'pgrep -f "multica.*daemon supervise" >/dev/null 2>&1 \
-      || pgrep -f "multica.*computer supervise" >/dev/null 2>&1 \
-      || pgrep -f "multica.*daemon start --foreground" >/dev/null 2>&1 \
-      || pgrep -f "multica.*computer start --foreground" >/dev/null 2>&1 \
-      || pgrep -f "/entrypoint-multica-daemon\\.sh" >/dev/null 2>&1'; then
-    ${DOCKER_BIN} exec -d "${NAME}" /entrypoint-multica-daemon.sh || true
-  fi
-fi
 
 HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
 echo ""
 echo "=========================================="
-echo "  Pi Web: http://${HOST_IP}:${PI_WEB_HOST_PORT}/"
 echo "  Term:   http://${HOST_IP}:${PI_WEB_HOST_PORT}/term"
-echo "  noVNC:  http://${HOST_IP}:${NOVNC_HOST_PORT}/"
-echo "  VNC:    ${HOST_IP}:${VNC_HOST_PORT}"
-echo "  envd:   ${HOST_IP}:${ENVD_HOST_PORT}"
-echo "  code:   ${HOST_IP}:${CODE_API_HOST_PORT}"
 echo "  logs:   ${DOCKER_BIN} logs -f ${NAME}"
 echo "  shell:  ${DOCKER_BIN} exec -it ${NAME} bash"
 echo "=========================================="

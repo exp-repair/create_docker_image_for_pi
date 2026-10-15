@@ -23,6 +23,7 @@ const SETTINGS_FILE = path.join(AGENT_DIR, "settings.json");
 
 const TERM_SHELL = process.env.PI_WEB_TERM_SHELL || (fs.existsSync("/bin/bash") ? "/bin/bash" : "/bin/sh");
 const TERM_TOKEN = process.env.PI_WEB_TERM_TOKEN || "";
+const CONSOLE_ENABLED = process.env.PI_WEB_CONSOLE === "1";
 const TERM_IDLE_MS = Number(process.env.PI_WEB_TERM_IDLE_MS || 30 * 60 * 1000);
 const TERM_MAX_SESSIONS = Number(process.env.PI_WEB_TERM_MAX_SESSIONS || 8);
 const termSessions = new Set();
@@ -592,6 +593,7 @@ function restartRpc() {
 }
 
 function rpcCommand(command, timeoutMs = 120000) {
+  if (!CONSOLE_ENABLED) return Promise.reject(new Error("Pi web console is disabled"));
   startRpc();
   if (!rpc || !rpc.stdin.writable) return Promise.reject(new Error("Pi RPC is not ready"));
   const id = crypto.randomUUID();
@@ -952,6 +954,11 @@ function attachTermSession(ws, reqUrl) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  if (!CONSOLE_ENABLED && (url.pathname === "/" || url.pathname === "/index.html")) {
+    res.writeHead(302, { Location: "/term" });
+    res.end();
+    return;
+  }
   if (url.pathname === "/events") {
     res.writeHead(200, {
       "content-type": "text/event-stream; charset=utf-8",
@@ -985,7 +992,7 @@ server.on("upgrade", (req, socket, head) => {
   });
 });
 
-startRpc();
+if (CONSOLE_ENABLED) startRpc();
 server.listen(PORT, HOST, () => {
   console.log(`[pi-web] listening on http://${HOST}:${PORT}`);
   console.log(`[pi-web] workspace=${WORKSPACE_DIR} sessions=${SESSIONS_ROOT}`);
