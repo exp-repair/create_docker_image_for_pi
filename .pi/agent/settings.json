@@ -1,0 +1,7 @@
+{
+  "lastChangelogVersion": "0.84.4",
+  "defaultProvider": "openai",
+  "defaultModel": "DeepSeek",
+  "defaultThinkingLevel": "high",
+  "theme": "dark"
+}

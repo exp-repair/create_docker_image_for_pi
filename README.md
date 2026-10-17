@@ -29,6 +29,14 @@ All account-scoped tools and configs live under root (`/root/.npm-global`,
 non-root `user` account is removed from the final image to avoid split runtime
 state.
 
+## Staging Swarm computer
+
+```bash
+./scripts/build-swarm.sh
+```
+
+Tags `coforge-computer:staging`. The script downloads the current `linux-x64` Computer from `https://releases-staging.coforge.cn` and checks its checksum. The image entrypoint is `coforge-computer foreground`; it does not run `setup --workspace`. Pi, DeepSeek, and the Lenovo CA are baked in. The DeepSeek key comes from `config/pi.env`, so do not push this image to a public registry. The staging operator steps are in the CoForge repository at `docs/operations/cloud-swarm/staging-bring-up.md`.
+
 ## Build locally
 
 ```bash

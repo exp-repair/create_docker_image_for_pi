@@ -191,7 +191,23 @@ RUN printf '%s\n' '#!/bin/sh' 'exec /usr/local/bin/coforge-computer __agent-cli 
       > /usr/local/bin/coforge \
   && chmod 755 /usr/local/bin/coforge
 
+# This machine's working Pi setup. Gitignored; absent in other checkouts, so the
+# baked DeepSeek config stays. Present here, it is what cloud Agents chat with.
+COPY config/pi-agent/ /tmp/pi-agent/
+RUN if [ -f /tmp/pi-agent/models.json ]; then \
+      cp /tmp/pi-agent/models.json /root/.pi/agent/models.json; \
+      if [ -f /tmp/pi-agent/settings.json ]; then cp /tmp/pi-agent/settings.json /root/.pi/agent/settings.json; fi; \
+      mkdir -p /root/.pi/agent/certs; \
+      if [ -d /tmp/pi-agent/certs ]; then cp -a /tmp/pi-agent/certs/. /root/.pi/agent/certs/; fi; \
+      chmod 600 /root/.pi/agent/models.json; \
+      chmod 644 /root/.pi/agent/certs/* 2>/dev/null || true; \
+    fi; \
+    rm -rf /tmp/pi-agent
+
+COPY scripts/entrypoint-foreground.sh /usr/local/bin/entrypoint-foreground.sh
+RUN chmod 755 /usr/local/bin/entrypoint-foreground.sh
+
 WORKDIR /workspace
-ENTRYPOINT ["/usr/local/bin/coforge-computer", "foreground"]
+ENTRYPOINT ["/usr/local/bin/entrypoint-foreground.sh"]
 
 EXPOSE 6079
