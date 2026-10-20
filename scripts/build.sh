@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-TAG="${TAG:-cube-leagent-template:local}"
+TAG="${TAG:-coforge-pi:local}"
 SANDBOX_IMAGE="${SANDBOX_IMAGE:-cube-sandbox-cn.tencentcloudcr.com/cube-sandbox/sandbox-code@sha256:b551b169de85c0216cce9453a8e22059ca47fd3dceced75e918cf1c8de60464b}"
 PI_CONFIG="${PI_CONFIG:-config/pi.env}"
 MULTICA_CONTEXT_DIR="multica/bin"
@@ -162,44 +162,58 @@ EXTRA=(
   --build-arg "NODE_MAJOR=${NODE_MAJOR:-22}"
   --build-arg "APT_MIRROR=${APT_MIRROR:-https://mirrors.aliyun.com/debian}"
   --build-arg "APT_SECURITY_MIRROR=${APT_SECURITY_MIRROR:-https://mirrors.aliyun.com/debian-security}"
-  --build-arg "PIP_INDEX_URL=${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
-  --build-arg "PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST:-mirrors.aliyun.com}"
 )
 for proxy_key in HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy; do
   if [[ -n "${!proxy_key:-}" ]]; then
     EXTRA+=(--build-arg "${proxy_key}=${!proxy_key}")
   fi
 done
-[[ -n "${NOVNC_ARCHIVE_URL:-}" ]] && EXTRA+=(--build-arg "NOVNC_ARCHIVE_URL=${NOVNC_ARCHIVE_URL}")
-
-if [[ -n "${MULTICA_LOCAL_BIN:-}" ]]; then
-  if [[ ! -x "${MULTICA_LOCAL_BIN}" ]]; then
-    echo "[build.sh] ERROR: MULTICA_LOCAL_BIN is not executable: ${MULTICA_LOCAL_BIN}" >&2
-    exit 1
-  fi
-  mkdir -p "${MULTICA_CONTEXT_DIR}"
-  cp "${MULTICA_LOCAL_BIN}" "${MULTICA_CONTEXT_BIN}"
-  chmod +x "${MULTICA_CONTEXT_BIN}"
-  echo "[build.sh] using local Multica binary from ${MULTICA_LOCAL_BIN}"
-elif [[ "${MULTICA_SKIP_DOWNLOAD:-0}" == "1" ]]; then
-  if [[ ! -x "${MULTICA_CONTEXT_BIN}" ]]; then
-    echo "[build.sh] ERROR: MULTICA_SKIP_DOWNLOAD=1 but missing executable: ${MULTICA_CONTEXT_BIN}" >&2
-    exit 1
-  fi
-  echo "[build.sh] reusing existing Multica binary at ${MULTICA_CONTEXT_BIN}"
-  "${MULTICA_CONTEXT_BIN}" version || true
-else
-  if ! download_multica_release "${MULTICA_CONTEXT_BIN}"; then
-    if [[ -x "${MULTICA_CONTEXT_BIN}" ]]; then
-      echo "[build.sh] WARN: Multica CDN download failed; falling back to existing ${MULTICA_CONTEXT_BIN}" >&2
-      "${MULTICA_CONTEXT_BIN}" version || true
-    else
-      echo "[build.sh] ERROR: Multica download failed and no local binary at ${MULTICA_CONTEXT_BIN}" >&2
-      echo "[build.sh] hint: curl -fsSL ${MULTICA_INSTALL_SCRIPT_URL} | bash" >&2
-      echo "[build.sh]       then MULTICA_LOCAL_BIN=\$HOME/.local/bin/multica ./scripts/build.sh" >&2
+mkdir -p coforge
+if [[ -n "${COFORGE_RELEASE_FEED_URL:-}" ]]; then
+  feed="${COFORGE_RELEASE_FEED_URL%/}"
+  version="$(curl -fsSL "${feed}/latest" | tr -d '[:space:]')"
+  case "${version}" in
+    ""|latest|.|*..*|-*)
+      echo "[build.sh] ERROR: feed latest is not a version: ${version}" >&2
       exit 1
-    fi
+      ;;
+  esac
+  if ! printf '%s' "${version}" | grep -Eq '^[A-Za-z0-9.+-]{1,100}$'; then
+    echo "[build.sh] ERROR: feed latest is not a version: ${version}" >&2
+    exit 1
   fi
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "${tmp}"' EXIT
+  echo "[build.sh] downloading ${feed}/${version}/linux-x64/coforge-computer.gz"
+  curl -fsSL "${feed}/${version}/linux-x64/coforge-computer.gz" -o "${tmp}/coforge-computer.gz"
+  curl -fsSL "${feed}/${version}/linux-x64/coforge-computer.sha256" -o "${tmp}/coforge-computer.sha256"
+  gzip -dc "${tmp}/coforge-computer.gz" > coforge/coforge-computer
+  expected="$(tr -d '[:space:]' < "${tmp}/coforge-computer.sha256")"
+  actual="$(sha256sum coforge/coforge-computer | awk '{print $1}')"
+  if [[ "${actual}" != "${expected}" ]]; then
+    echo "[build.sh] ERROR: Computer checksum mismatch" >&2
+    exit 1
+  fi
+  if ! grep -a -q 'https://staging.coforge.cn' coforge/coforge-computer; then
+    echo "[build.sh] ERROR: downloaded Computer is not baked for https://staging.coforge.cn" >&2
+    exit 1
+  fi
+  if ! grep -a -q 'COFORGE_CLUSTER_TOKEN' coforge/coforge-computer; then
+    echo "[build.sh] ERROR: downloaded Computer has no cloud host; publish the post-merge build first" >&2
+    exit 1
+  fi
+  chmod 755 coforge/coforge-computer
+  EXTRA+=(--build-arg "COMPUTER_VERSION=${version}")
+  echo "[build.sh] staged CoForge Computer ${version} from ${feed}"
+else
+  COFORGE_COMPUTER_BIN="${COFORGE_COMPUTER_BIN:-${HOME}/.coforge/computer/install/active/coforge-computer}"
+  if [[ ! -x "${COFORGE_COMPUTER_BIN}" ]]; then
+    echo "[build.sh] ERROR: missing CoForge Computer binary: ${COFORGE_COMPUTER_BIN}" >&2
+    exit 1
+  fi
+  cp "${COFORGE_COMPUTER_BIN}" coforge/coforge-computer
+  chmod 755 coforge/coforge-computer
+  echo "[build.sh] staged CoForge Computer from ${COFORGE_COMPUTER_BIN}"
 fi
 
 if [[ -f "${PI_CONFIG}" ]]; then
@@ -211,9 +225,7 @@ if [[ -f "${PI_CONFIG}" ]]; then
 fi
 
 INSTALL_PI="${INSTALL_PI:-1}"
-INSTALL_CURSOR="${INSTALL_CURSOR:-1}"
 EXTRA+=(--build-arg "INSTALL_PI=${INSTALL_PI}")
-EXTRA+=(--build-arg "INSTALL_CURSOR=${INSTALL_CURSOR}")
 
 if [[ "${INSTALL_PI}" == "1" ]]; then
   if [[ -z "${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:-}" ]]; then
@@ -226,10 +238,10 @@ if [[ "${INSTALL_PI}" == "1" ]]; then
     --build-arg "PI_WORKSPACE_DIR=${PI_WORKSPACE_DIR:-/workspace}"
     --build-arg "PI_EVOLUTION_ENABLED=${PI_EVOLUTION_ENABLED:-1}"
     --build-arg "LENOVO_DEEPSEEK_V4_FLASH_API_KEY=${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}"
-    --build-arg "LENOVO_DEEPSEEK_PROVIDER=${LENOVO_DEEPSEEK_PROVIDER:-lenovo-deepseek-v4-flash}"
-    --build-arg "LENOVO_DEEPSEEK_MODEL=${LENOVO_DEEPSEEK_MODEL:-DeepSeek-V4-Flash-0731}"
-    --build-arg "LENOVO_DEEPSEEK_BASE_URL=${LENOVO_DEEPSEEK_BASE_URL:-https://modelfactory.lenovo.com/service-large-600-1777255649450/llm/v1}"
-    --build-arg "LENOVO_DEEPSEEK_MODEL_NAME=${LENOVO_DEEPSEEK_MODEL_NAME:-Lenovo ModelFactory DeepSeek V4 Flash}"
+    --build-arg "LENOVO_DEEPSEEK_PROVIDER=${LENOVO_DEEPSEEK_PROVIDER:-openai}"
+    --build-arg "LENOVO_DEEPSEEK_MODEL=${LENOVO_DEEPSEEK_MODEL:-DeepSeek}"
+    --build-arg "LENOVO_DEEPSEEK_BASE_URL=${LENOVO_DEEPSEEK_BASE_URL:-https://modelfactory.lenovo.com/llm/v1}"
+    --build-arg "LENOVO_DEEPSEEK_MODEL_NAME=${LENOVO_DEEPSEEK_MODEL_NAME:-DeepSeek}"
   )
   [[ -n "${NPM_REGISTRY:-}" ]] && EXTRA+=(--build-arg "NPM_REGISTRY=${NPM_REGISTRY}")
   echo "[build.sh] Pi install: enabled (suite ${PI_SUITE_VERSION:-0.1.17}); DeepSeek will be baked into the image"
@@ -237,14 +249,7 @@ else
   echo "[build.sh] Pi install: skipped (INSTALL_PI=0)"
 fi
 
-if [[ "${INSTALL_CURSOR}" == "1" ]]; then
-  echo "[build.sh] Cursor Agent install: enabled; CURSOR_API_KEY will be injected at runtime"
-else
-  echo "[build.sh] Cursor Agent install: skipped (INSTALL_CURSOR=0)"
-fi
-
 echo "[build.sh] SANDBOX_IMAGE=${SANDBOX_IMAGE}"
 echo "[build.sh] APT_MIRROR=${APT_MIRROR:-https://mirrors.aliyun.com/debian}"
-echo "[build.sh] PIP_INDEX_URL=${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
 echo "[build.sh] tag=${TAG}"
 docker build "${EXTRA[@]}" -t "${TAG}" .

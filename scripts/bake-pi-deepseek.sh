@@ -13,10 +13,11 @@ CERTS_DIR="${AGENT_DIR}/certs"
 CA_CERT_FILE="${LENOVO_MODELFACTORY_CA_CERT:-${CERTS_DIR}/lenovo-modelfactory-ca.pem}"
 MODEL_FACTORY_ENV_FILE="${LENOVO_MODEL_FACTORY_ENV_FILE:-${AGENT_DIR}/model-factory.env}"
 
-LENOVO_DEEPSEEK_PROVIDER="${LENOVO_DEEPSEEK_PROVIDER:-lenovo-deepseek-v4-flash}"
-LENOVO_DEEPSEEK_MODEL="${LENOVO_DEEPSEEK_MODEL:-DeepSeek-V4-Flash-0731}"
-LENOVO_DEEPSEEK_BASE_URL="${LENOVO_DEEPSEEK_BASE_URL:-https://modelfactory.lenovo.com/service-large-600-1777255649450/llm/v1}"
-LENOVO_DEEPSEEK_MODEL_NAME="${LENOVO_DEEPSEEK_MODEL_NAME:-Lenovo ModelFactory DeepSeek V4 Flash}"
+LENOVO_DEEPSEEK_PROVIDER="${LENOVO_DEEPSEEK_PROVIDER:-openai}"
+LENOVO_DEEPSEEK_MODEL="${LENOVO_DEEPSEEK_MODEL:-DeepSeek}"
+LENOVO_DEEPSEEK_BASE_URL="${LENOVO_DEEPSEEK_BASE_URL:-https://modelfactory.lenovo.com/llm/v1}"
+LENOVO_DEEPSEEK_MODEL_NAME="${LENOVO_DEEPSEEK_MODEL_NAME:-DeepSeek}"
+PI_MODELFACTORY_TEMPLATE="${PI_MODELFACTORY_TEMPLATE:-/usr/local/share/coforge/pi-modelfactory-provider.json}"
 LENOVO_MODELFACTORY_HOST="${LENOVO_MODELFACTORY_HOST:-modelfactory.lenovo.com}"
 LENOVO_MODELFACTORY_IP="${LENOVO_MODELFACTORY_IP:-10.110.158.101}"
 API_KEY="${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:-}"
@@ -63,6 +64,7 @@ fi
 
 PI_MODELS_FILE="${MODELS_FILE}" \
 PI_SETTINGS_FILE="${SETTINGS_FILE}" \
+PI_MODELFACTORY_TEMPLATE="${PI_MODELFACTORY_TEMPLATE}" \
 LENOVO_DEEPSEEK_PROVIDER="${LENOVO_DEEPSEEK_PROVIDER}" \
 LENOVO_DEEPSEEK_MODEL="${LENOVO_DEEPSEEK_MODEL}" \
 LENOVO_DEEPSEEK_BASE_URL="${LENOVO_DEEPSEEK_BASE_URL}" \
@@ -81,33 +83,34 @@ function readJson(path) {
 
 const modelsPath = process.env.PI_MODELS_FILE;
 const settingsPath = process.env.PI_SETTINGS_FILE;
-const provider = String(process.env.LENOVO_DEEPSEEK_PROVIDER || "lenovo-deepseek-v4-flash").trim();
-const modelId = String(process.env.LENOVO_DEEPSEEK_MODEL || "DeepSeek-V4-Flash-0731").trim();
+const provider = String(process.env.LENOVO_DEEPSEEK_PROVIDER || "openai").trim();
+const modelId = String(process.env.LENOVO_DEEPSEEK_MODEL || "DeepSeek").trim();
 const apiKey = String(process.env.LENOVO_DEEPSEEK_V4_FLASH_API_KEY || "").trim();
+const templatePath = String(process.env.PI_MODELFACTORY_TEMPLATE || "").trim();
 
 const models = readJson(modelsPath);
 const providers = models.providers && typeof models.providers === "object" ? { ...models.providers } : {};
 
+const template = templatePath && fs.existsSync(templatePath) ? readJson(templatePath) : {};
 providers[provider] = {
-  baseUrl: String(process.env.LENOVO_DEEPSEEK_BASE_URL || "").trim(),
-  api: "openai-completions",
+  baseUrl: String(process.env.LENOVO_DEEPSEEK_BASE_URL || template.baseUrl || "").trim(),
+  api: template.api || "openai-completions",
   apiKey,
-  authHeader: true,
-  compat: {
+  compat: template.compat || {
     supportsDeveloperRole: false,
-    supportsReasoningEffort: false,
-    supportsStore: false,
-    maxTokensField: "max_tokens",
+    thinkingFormat: "chat-template",
+    chatTemplateKwargs: {
+      reasoning_effort: { $var: "thinking.effort" },
+    },
   },
-  models: [
+  models: Array.isArray(template.models) && template.models.length > 0 ? template.models : [
     {
       id: modelId,
-      name: String(process.env.LENOVO_DEEPSEEK_MODEL_NAME || "Lenovo ModelFactory DeepSeek V4 Flash").trim(),
-      reasoning: false,
+      name: String(process.env.LENOVO_DEEPSEEK_MODEL_NAME || "DeepSeek").trim(),
+      reasoning: true,
       input: ["text"],
-      contextWindow: 524288,
-      maxTokens: 4096,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 128000,
+      maxTokens: 8192,
     },
   ],
 };
@@ -123,7 +126,8 @@ fs.writeFileSync(settingsPath, `${JSON.stringify({
   ...(packages ? { packages } : {}),
   defaultProvider: provider,
   defaultModel: modelId,
-  theme: settings.theme ?? "light",
+  defaultThinkingLevel: settings.defaultThinkingLevel ?? "high",
+  theme: settings.theme ?? "dark",
 }, null, 2)}\n`, { mode: 0o600 });
 try { fs.chmodSync(settingsPath, 0o600); } catch {}
 

@@ -1,4 +1,8 @@
 config/pi.env
+config/pi-agent/models.json
+config/pi-agent/settings.json
+config/pi-agent/certs/
+coforge/coforge-computer
 config/pi-test.env
 multica/
 pi-web/node_modules/

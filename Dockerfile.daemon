@@ -1,0 +1,31 @@
+# Initial CoForge cloud-computer daemon. systemd is PID 1 because each Workspace
+# daemon is a systemd --user service.
+FROM pgvector/pgvector:pg17
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    COFORGE_WORKSPACE_SLUG=my
+
+RUN rm -f /etc/apt/sources.list.d/*.sources \
+  && printf '%s\n' \
+    'deb http://mirrors.aliyun.com/debian bookworm main' \
+    'deb http://mirrors.aliyun.com/debian bookworm-updates main' \
+    'deb http://mirrors.aliyun.com/debian-security bookworm-security main' \
+    > /etc/apt/sources.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends systemd systemd-sysv dbus ca-certificates \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/* \
+  && systemctl mask systemd-udevd.service systemd-logind.service getty@.service console-getty.service
+
+COPY coforge/coforge-computer /usr/local/bin/coforge-computer
+COPY scripts/coforge-daemon-boot.sh /usr/local/bin/coforge-daemon-boot.sh
+COPY config/coforge-daemon-boot.service /etc/systemd/system/coforge-daemon-boot.service
+RUN chmod 755 /usr/local/bin/coforge-computer /usr/local/bin/coforge-daemon-boot.sh \
+  && mkdir -p /etc/systemd/system/user@.service.d \
+  && printf '%s\n' '[Service]' 'Environment=XDG_RUNTIME_DIR=/run/user/%i' \
+    > /etc/systemd/system/user@.service.d/runtime-dir.conf \
+  && systemctl enable coforge-daemon-boot.service
+
+ENTRYPOINT []
+STOPSIGNAL SIGRTMIN+3
+CMD ["/lib/systemd/systemd"]

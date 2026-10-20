@@ -101,14 +101,14 @@ runtime_env = {
     ),
     "LENOVO_DEEPSEEK_AS_DEFAULT": os.environ.get("LENOVO_DEEPSEEK_AS_DEFAULT", "1"),
     "LENOVO_DEEPSEEK_PROVIDER": os.environ.get(
-        "LENOVO_DEEPSEEK_PROVIDER", "lenovo-deepseek-v4-flash"
+        "LENOVO_DEEPSEEK_PROVIDER", "openai"
     ),
     "LENOVO_DEEPSEEK_MODEL": os.environ.get(
-        "LENOVO_DEEPSEEK_MODEL", "DeepSeek-V4-Flash-0731"
+        "LENOVO_DEEPSEEK_MODEL", "DeepSeek"
     ),
     "LENOVO_DEEPSEEK_BASE_URL": os.environ.get(
         "LENOVO_DEEPSEEK_BASE_URL",
-        "https://modelfactory.lenovo.com/service-large-600-1777255649450/llm/v1",
+        "https://modelfactory.lenovo.com/llm/v1",
     ),
     "LENOVO_MODELFACTORY_HOST": os.environ.get(
         "LENOVO_MODELFACTORY_HOST", "modelfactory.lenovo.com"
