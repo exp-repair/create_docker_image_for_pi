@@ -17,6 +17,7 @@ ARG NPM_REGISTRY=
 # Debian apt mirror (empty = keep image default sources). China default: Aliyun.
 ARG APT_MIRROR=https://mirrors.aliyun.com/debian
 ARG APT_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
+ARG COMPUTER_VERSION=
 
 USER root
 
@@ -95,6 +96,7 @@ RUN mkdir -p /workspace /root/.npm-global /root/.pi/agent/certs \
 WORKDIR /workspace
 
 COPY coforge/coforge-computer /usr/local/bin/coforge-computer
+LABEL org.coforge.computer.version=${COMPUTER_VERSION}
 COPY scripts/entrypoint-pi-web.sh /entrypoint-pi-web.sh
 COPY scripts/entrypoint-coforge-daemon.sh /entrypoint-coforge-daemon.sh
 COPY scripts/cube-start.sh /usr/local/bin/cube-start.sh

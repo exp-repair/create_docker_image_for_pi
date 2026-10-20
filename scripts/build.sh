@@ -203,6 +203,7 @@ if [[ -n "${COFORGE_RELEASE_FEED_URL:-}" ]]; then
     exit 1
   fi
   chmod 755 coforge/coforge-computer
+  EXTRA+=(--build-arg "COMPUTER_VERSION=${version}")
   echo "[build.sh] staged CoForge Computer ${version} from ${feed}"
 else
   COFORGE_COMPUTER_BIN="${COFORGE_COMPUTER_BIN:-${HOME}/.coforge/computer/install/active/coforge-computer}"
