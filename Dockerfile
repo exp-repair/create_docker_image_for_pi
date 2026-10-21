@@ -38,7 +38,8 @@ ENV HOME=/root \
     NODE_OPTIONS=--require=/usr/local/lib/lenovo-modelfactory-dns-hook.js \
     PATH=/root/.local/bin:/root/.npm-global/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
 
-# Terminal toolkit plus Node for Pi and the web terminal. No browser or desktop stack.
+# Terminal toolkit, Node, and a slim XFCE desktop. TigerVNC stays stopped until
+# a client connects. Port 5901 is raw VNC. Port 6080 is the browser WebSocket.
 RUN set -eux; \
   if [ -n "${APT_MIRROR}" ]; then \
     . /etc/os-release; \
@@ -70,6 +71,13 @@ RUN set -eux; \
     nano \
     vim-tiny \
     ripgrep \
+    dbus-x11 \
+    fonts-dejavu-core \
+    fonts-noto-cjk \
+    tigervnc-standalone-server \
+    novnc \
+    xfce4 \
+    xfce4-terminal \
   && mkdir -p /etc/apt/keyrings \
   && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
     | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
@@ -207,9 +215,22 @@ RUN if [ -f /tmp/pi-agent/models.json ]; then \
     rm -rf /tmp/pi-agent
 
 COPY scripts/entrypoint-foreground.sh /usr/local/bin/entrypoint-foreground.sh
-RUN chmod 755 /usr/local/bin/entrypoint-foreground.sh
+COPY scripts/vnc-ondemand.py /usr/local/bin/vnc-ondemand.py
+COPY scripts/vnc-websocket.py /usr/local/bin/vnc-websocket.py
+COPY scripts/vnc-xstartup /usr/local/share/coforge/vnc-xstartup
+COPY scripts/vnc-desktop.html /usr/local/share/coforge/vnc-desktop.html
+RUN chmod 755 /usr/local/bin/entrypoint-foreground.sh \
+      /usr/local/bin/vnc-ondemand.py \
+      /usr/local/bin/vnc-websocket.py \
+      /usr/local/share/coforge/vnc-xstartup \
+  && mkdir -p /root/.vnc \
+  && ln -sfn /usr/local/share/coforge/vnc-xstartup /root/.vnc/xstartup \
+  && command -v tigervncserver \
+  && command -v startxfce4 \
+  && test -f /usr/share/novnc/core/rfb.js \
+  && test -f /usr/local/share/coforge/vnc-desktop.html
 
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/entrypoint-foreground.sh"]
 
-EXPOSE 6079
+EXPOSE 5901 6079 6080

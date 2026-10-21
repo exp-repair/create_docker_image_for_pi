@@ -1,0 +1,8 @@
+#!/bin/sh
+# TigerVNC session. Started only after a client connects.
+unset SESSION_MANAGER
+unset DBUS_SESSION_BUS_ADDRESS
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-root}"
+mkdir -p "${XDG_RUNTIME_DIR}"
+chmod 700 "${XDG_RUNTIME_DIR}"
+exec dbus-run-session -- startxfce4
