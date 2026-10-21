@@ -10,4 +10,13 @@ if [[ -n "${host}" && -n "${ip}" && -w /etc/hosts ]] && ! grep -Eq "(^|[[:space:
   printf '%s %s\n' "${ip}" "${host}" >> /etc/hosts
 fi
 
+# Desktop stays down until a VNC or browser client connects.
+# VNC_ENABLE=0 skips both listeners. VNC_WS_ENABLE=0 keeps raw VNC only.
+if [[ "${VNC_ENABLE:-1}" != "0" ]]; then
+  /usr/local/bin/vnc-ondemand.py &
+  if [[ "${VNC_WS_ENABLE:-1}" != "0" ]]; then
+    /usr/local/bin/vnc-websocket.py &
+  fi
+fi
+
 exec /usr/local/bin/coforge-computer foreground
