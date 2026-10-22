@@ -9,9 +9,7 @@ services:
         PI_WORKSPACE_DIR: ${PI_WORKSPACE_DIR:-/workspace}
         PI_EVOLUTION_ENABLED: ${PI_EVOLUTION_ENABLED:-1}
     image: coforge-pi:local
-    # The Swarm image starts `coforge-computer foreground`. This local service
-    # still opens the web terminal.
-    entrypoint: ["/usr/local/bin/cube-start.sh"]
+    entrypoint: ["/usr/local/bin/entrypoint-foreground.sh"]
     network_mode: host
     env_file:
       - path: ./config/pi.env

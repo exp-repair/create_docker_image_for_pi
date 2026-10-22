@@ -71,15 +71,9 @@ log "source image: ${SOURCE_IMAGE}"
 log "checking image has built-in Cube/Multica runtime helpers"
 docker run --rm --entrypoint /bin/sh "${SOURCE_IMAGE}" -lc '
 set -eu
-test -x /usr/local/bin/cube-start.sh
-test -x /usr/local/bin/start-multica-runtime.sh
-test -x /usr/local/bin/configure-pi-runtime.sh
-test -x /usr/local/bin/configure-cursor-runtime.sh
-test -x /usr/local/bin/configure-multica-runtime.sh
-test -x /entrypoint-multica-daemon.sh
-test -x /entrypoint-pi-web.sh
-test -x /usr/local/bin/multica
-test -f /opt/pi-web/server.js
+test -x /usr/local/bin/entrypoint-foreground.sh
+test -x /usr/local/bin/coforge-chromium
+test -f /usr/local/share/coforge/desktop-logo.png
 test -f /root/.pi/agent/models.json
 test -f /root/.pi/agent/settings.json
 grep -q "https://modelfactory.lenovo.com/llm/v1" /root/.pi/agent/models.json
@@ -128,7 +122,7 @@ create_args=(
   --expose-port 9223
   --probe "${PROBE_PORT}"
   --probe-path "${PROBE_PATH}"
-  --cmd /usr/local/bin/cube-start.sh
+  --cmd /usr/local/bin/entrypoint-foreground.sh
   --env 'DISPLAY=:0'
   --env 'SCREEN_GEOM=1920x1080x24'
   --env 'RESOLUTION=1920x1080x24'

@@ -8,6 +8,7 @@ open session. The VNC password is not sent to the page.
 import base64
 import hashlib
 import hmac
+import importlib.util
 import os
 import posixpath
 import secrets
@@ -397,8 +398,11 @@ def pump_desktop(vnc: socket.socket, stream: Stream) -> None:
         vnc.close()
 
 
-def bridge(conn: socket.socket) -> None:
-    vnc = socket.create_connection((VNC_HOST, VNC_PORT), 10)
+def bridge(conn: socket.socket, vnc_port: int = VNC_PORT) -> None:
+    vnc = socket.create_connection((VNC_HOST, vnc_port), 10)
+    # The connect timeout stays on the socket. A still desktop sends no bytes,
+    # so the next recv would fail after 10s and drop the browser session.
+    vnc.settimeout(None)
     vnc.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     try:
         login_to_vnc(vnc, load_password())
@@ -433,6 +437,44 @@ def handle_http(conn: socket.socket, expected_token: str) -> None:
         return
     parsed = urlsplit(target)
     headers = header_map(text)
+    screen = SCREEN_TARGET(parsed.path) if SCREEN_TARGET is not None else None
+    if screen is not None and method == "GET":
+        agent_id, kind = screen
+        if kind == "page":
+            with open(PAGE_PATH, "rb") as handle:
+                send_http(conn, "200 OK", handle.read(), "text/html; charset=utf-8")
+            return
+        if kind == "socket":
+            if not token_ok(request_token(headers, parsed.query), expected_token):
+                send_http(conn, "401 Unauthorized", b"", "text/plain")
+                return
+            key = headers.get("sec-websocket-key", "")
+            if not key:
+                send_http(conn, "400 Bad Request", b"", "text/plain")
+                return
+            accept = base64.b64encode(hashlib.sha1((key + GUID).encode()).digest()).decode()
+            reply = (
+                "HTTP/1.1 101 Switching Protocols\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                f"Sec-WebSocket-Accept: {accept}\r\n"
+                "\r\n"
+            )
+            conn.sendall(reply.encode())
+            try:
+                port = SCREENS.open_viewer(agent_id)
+                bridge(BufferedSocket(conn, rest), port)
+            finally:
+                SCREENS.close_viewer(agent_id)
+            return
+        try:
+            path = novnc_file("/" + kind)
+        except FileNotFoundError:
+            send_http(conn, "404 Not Found", b"", "text/plain")
+            return
+        with open(path, "rb") as handle:
+            send_http(conn, "200 OK", handle.read(), content_type(path))
+        return
     if method == "GET" and parsed.path in ("/", "/desktop.html"):
         query = f"?{parsed.query}" if parsed.query else ""
         if parsed.path == "/":
@@ -499,8 +541,8 @@ def serve(conn: socket.socket, token: str) -> None:
     try:
         conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         handle_http(conn, token)
-    except ConnectionError:
-        pass
+    except ConnectionError as exc:
+        log(f"session closed: {exc}")
     except Exception as exc:
         log(f"session failed: {exc}")
     finally:
@@ -510,8 +552,31 @@ def serve(conn: socket.socket, token: str) -> None:
             pass
 
 
+SCREENS = None
+SCREEN_TARGET = None
+
+
+def load_screens():
+    sibling = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vnc-agent-screen.py")
+    spec = importlib.util.spec_from_file_location("vnc_agent_screen", sibling)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("vnc-agent-screen.py is missing")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def main() -> None:
+    global SCREENS, SCREEN_TARGET
     token = prepare_token()
+    try:
+        module = load_screens()
+        SCREENS = module.AgentScreens()
+        SCREEN_TARGET = module.screen_target
+        module.serve_control(SCREENS)
+        log(f"agent screens on 127.0.0.1:{module.CONTROL_PORT}")
+    except OSError as exc:
+        log(f"agent screen control failed: {exc}")
     listener = socket.socket()
     listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     listener.bind(("0.0.0.0", WS_PORT))

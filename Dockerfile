@@ -1,8 +1,9 @@
 # Staging Swarm computer image. The host starts this image with no command, so
 # the entrypoint is `coforge-computer foreground`. The host injects the binding
 # environment; this image does not run `setup --workspace`.
-# Pi, DeepSeek, and the Lenovo CA stay in the image. The local web terminal
-# remains available via cube-start.sh, which compose overrides to.
+# Pi, DeepSeek, and the Lenovo CA stay in the image. The desktop is a slim
+# XFCE session: Chromium, Thunar, and a terminal, with the CoForge mark on
+# the wallpaper. It stays down until a client connects.
 
 ARG SANDBOX_IMAGE=cube-sandbox-cn.tencentcloudcr.com/cube-sandbox/sandbox-code@sha256:b551b169de85c0216cce9453a8e22059ca47fd3dceced75e918cf1c8de60464b
 FROM ${SANDBOX_IMAGE}
@@ -40,6 +41,8 @@ ENV HOME=/root \
 
 # Terminal toolkit, Node, and a slim XFCE desktop. TigerVNC stays stopped until
 # a client connects. Port 5901 is raw VNC. Port 6080 is the browser WebSocket.
+# novnc's Python stack (numpy, websockify, oslo) is removed after install; the
+# image serves /usr/share/novnc itself.
 RUN set -eux; \
   if [ -n "${APT_MIRROR}" ]; then \
     . /etc/os-release; \
@@ -76,8 +79,14 @@ RUN set -eux; \
     fonts-noto-cjk \
     tigervnc-standalone-server \
     novnc \
-    xfce4 \
+    librsvg2-bin \
+    xfce4-session \
+    xfwm4 \
+    xfdesktop4 \
+    xfce4-panel \
+    thunar \
     xfce4-terminal \
+    chromium \
   && mkdir -p /etc/apt/keyrings \
   && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
     | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
@@ -86,7 +95,13 @@ RUN set -eux; \
   && apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nodejs \
   && ln -sf /usr/bin/fdfind /usr/local/bin/fd \
-  && apt-get purge -y --auto-remove gnupg \
+  && for pkg in \
+       python3-novnc python3-numpy python3-websockify websockify \
+       python3-oslo.config python3-oslo.context python3-oslo.i18n \
+       python3-oslo.log python3-oslo.serialization python3-oslo.utils \
+       gnupg; do \
+       if dpkg -s "$pkg" >/dev/null 2>&1; then dpkg --force-depends --purge "$pkg"; fi; \
+     done \
   && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 COPY lenovo-modelfactory-ca.pem /root/.pi/agent/certs/lenovo-modelfactory-ca.pem
@@ -105,18 +120,10 @@ WORKDIR /workspace
 
 COPY coforge/coforge-computer /usr/local/bin/coforge-computer
 LABEL org.coforge.computer.version=${COMPUTER_VERSION}
-COPY scripts/entrypoint-pi-web.sh /entrypoint-pi-web.sh
-COPY scripts/entrypoint-coforge-daemon.sh /entrypoint-coforge-daemon.sh
-COPY scripts/cube-start.sh /usr/local/bin/cube-start.sh
-COPY scripts/configure-pi-runtime.sh /usr/local/bin/configure-pi-runtime.sh
 COPY scripts/bake-pi-deepseek.sh /usr/local/bin/bake-pi-deepseek.sh
 COPY scripts/container-systemctl /usr/local/bin/systemctl
 COPY config/pi-modelfactory-provider.json /usr/local/share/coforge/pi-modelfactory-provider.json
 RUN chmod 755 /usr/local/bin/coforge-computer \
-    /entrypoint-pi-web.sh \
-    /entrypoint-coforge-daemon.sh \
-  /usr/local/bin/cube-start.sh \
-  /usr/local/bin/configure-pi-runtime.sh \
   /usr/local/bin/bake-pi-deepseek.sh \
   /usr/local/bin/systemctl
 
@@ -178,20 +185,6 @@ RUN if [ "${INSTALL_PI}" != "1" ]; then \
       grep -q '"defaultModel": "DeepSeek"' /root/.pi/agent/settings.json; \
     fi
 
-# Web terminal native deps. node_modules survives the later COPY (context excludes it).
-COPY pi-web/package.json pi-web/package-lock.json /opt/pi-web/
-RUN apt-get update \
-  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    python3 \
-    make \
-    g++ \
-  && cd /opt/pi-web \
-  && npm ci --omit=dev \
-  && apt-get purge -y --auto-remove make g++ \
-  && rm -rf /var/lib/apt/lists/* /root/.npm/_cacache /tmp/* /var/tmp/*
-
-COPY pi-web /opt/pi-web
-
 # Remove the non-root working account inherited from the Cube base image. System
 # accounts such as nobody/daemon remain because Debian packages may rely on them.
 RUN userdel -r user 2>/dev/null || true \
@@ -218,19 +211,43 @@ COPY scripts/entrypoint-foreground.sh /usr/local/bin/entrypoint-foreground.sh
 COPY scripts/vnc-ondemand.py /usr/local/bin/vnc-ondemand.py
 COPY scripts/vnc-websocket.py /usr/local/bin/vnc-websocket.py
 COPY scripts/vnc-xstartup /usr/local/share/coforge/vnc-xstartup
+COPY scripts/vnc-agent-xstartup /usr/local/share/coforge/vnc-agent-xstartup
+COPY scripts/vnc-agent-screen.py /usr/local/bin/vnc-agent-screen.py
 COPY scripts/vnc-desktop.html /usr/local/share/coforge/vnc-desktop.html
+COPY scripts/coforge-chromium.sh /usr/local/bin/coforge-chromium
+COPY config/desktop-wallpaper-preview.png /usr/local/share/coforge/desktop-logo.png
+COPY config/xfce/xfce4-desktop.xml /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml
+COPY config/xfce/xfce4-panel.xml /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
+COPY config/xfce/xfwm4.xml /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml
+COPY config/xfce/applications/coforge-chromium.desktop /usr/share/applications/coforge-chromium.desktop
+COPY config/chromium/policies/managed/coforge.json /etc/chromium/policies/managed/coforge.json
 RUN chmod 755 /usr/local/bin/entrypoint-foreground.sh \
       /usr/local/bin/vnc-ondemand.py \
       /usr/local/bin/vnc-websocket.py \
+      /usr/local/bin/vnc-agent-screen.py \
+      /usr/local/bin/coforge-chromium \
       /usr/local/share/coforge/vnc-xstartup \
-  && mkdir -p /root/.vnc \
+      /usr/local/share/coforge/vnc-agent-xstartup \
+  && mkdir -p /usr/local/share/coforge /root/.vnc \
   && ln -sfn /usr/local/share/coforge/vnc-xstartup /root/.vnc/xstartup \
+  && rm -rf /root/.cache /root/.npm \
+      /usr/bin/envd \
+      /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/uvicorn /usr/local/bin/fastapi \
+      /usr/local/bin/start-lightweight-code-interpreter.sh \
+      /opt/lightweight-code-interpreter \
+  && dpkg --purge librsvg2-bin \
   && command -v tigervncserver \
   && command -v startxfce4 \
+  && command -v chromium \
   && test -f /usr/share/novnc/core/rfb.js \
-  && test -f /usr/local/share/coforge/vnc-desktop.html
+  && test -f /usr/local/share/coforge/vnc-desktop.html \
+  && test -f /usr/local/share/coforge/desktop-logo.png \
+  && test -f /etc/chromium/policies/managed/coforge.json \
+  && grep -q 'placement_mode' /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml \
+  && grep -q 'p=10' /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml \
+  && grep -q -- '--start-maximized' /usr/local/bin/coforge-chromium
 
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/entrypoint-foreground.sh"]
 
-EXPOSE 5901 6079 6080
+EXPOSE 5901 6080

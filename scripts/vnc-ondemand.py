@@ -30,11 +30,23 @@ def log(message: str) -> None:
 
 
 def write_password() -> None:
+    """Keep one VNC password for the life of the container.
+
+    The shared desktop and every Agent screen read the same files. Generating a
+    new password each time the shared desktop starts leaves already-running
+    Agent screens on the old one, and the browser then waits forever.
+    """
     os.makedirs("/root/.vnc", mode=0o700, exist_ok=True)
+    path = "/root/.vnc/password.txt"
     password = os.environ.get("VNC_PASSWORD", "").strip()
     if not password:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                password = handle.read().strip()
+        except OSError:
+            password = ""
+    if not password:
         password = secrets.token_hex(4)
-        path = "/root/.vnc/password.txt"
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(password + "\n")
         os.chmod(path, 0o600)
@@ -46,9 +58,18 @@ def write_password() -> None:
         raise RuntimeError("vnc-websocket.py is missing")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    with open("/root/.vnc/passwd", "wb") as handle:
-        handle.write(module.obfuscate_vnc_password(password))
-    os.chmod("/root/.vnc/passwd", 0o600)
+    encoded = module.obfuscate_vnc_password(password)
+    passwd_path = "/root/.vnc/passwd"
+    try:
+        with open(passwd_path, "rb") as handle:
+            current = handle.read()
+    except OSError:
+        current = b""
+    if current == encoded:
+        return
+    with open(passwd_path, "wb") as handle:
+        handle.write(encoded)
+    os.chmod(passwd_path, 0o600)
 
 
 def port_open(port: int) -> bool:
@@ -151,6 +172,7 @@ def handle(client: socket.socket) -> None:
             clients += 1
             start_server()
         backend = socket.create_connection(("127.0.0.1", BACKEND_PORT), 5)
+        backend.settimeout(None)
         splice(client, backend)
     except Exception as exc:
         log(f"session failed: {exc}")
