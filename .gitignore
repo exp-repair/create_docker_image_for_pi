@@ -7,3 +7,5 @@ config/pi-test.env
 multica/
 pi-web/node_modules/
 logs/
+build-swarm.nohup.log
+scripts/__pycache__/

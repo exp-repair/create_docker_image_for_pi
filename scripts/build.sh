@@ -29,7 +29,8 @@ if [[ -n "${COFORGE_RELEASE_FEED_URL:-}" ]]; then
   tmp="$(mktemp -d)"
   trap 'rm -rf "${tmp}"' EXIT
   echo "[build.sh] downloading ${feed}/${version}/linux-x64/coforge-computer.gz"
-  curl -fsSL "${feed}/${version}/linux-x64/coforge-computer.gz" -o "${tmp}/coforge-computer.gz"
+  # -s hides the meter; keep -fL and show a progress bar for the large binary.
+  curl -fL --progress-bar "${feed}/${version}/linux-x64/coforge-computer.gz" -o "${tmp}/coforge-computer.gz"
   curl -fsSL "${feed}/${version}/linux-x64/coforge-computer.sha256" -o "${tmp}/coforge-computer.sha256"
   gzip -dc "${tmp}/coforge-computer.gz" > coforge/coforge-computer
   expected="$(tr -d '[:space:]' < "${tmp}/coforge-computer.sha256")"

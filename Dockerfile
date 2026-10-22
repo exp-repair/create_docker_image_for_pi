@@ -86,6 +86,8 @@ RUN set -eux; \
     xfce4-panel \
     thunar \
     xfce4-terminal \
+    python3-gi \
+    gir1.2-gtk-3.0 \
     chromium \
   && mkdir -p /etc/apt/keyrings \
   && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
@@ -215,17 +217,34 @@ COPY scripts/vnc-agent-xstartup /usr/local/share/coforge/vnc-agent-xstartup
 COPY scripts/vnc-agent-screen.py /usr/local/bin/vnc-agent-screen.py
 COPY scripts/vnc-desktop.html /usr/local/share/coforge/vnc-desktop.html
 COPY scripts/coforge-chromium.sh /usr/local/bin/coforge-chromium
+COPY scripts/coforge_x11.py /usr/local/lib/coforge/coforge_x11.py
+COPY scripts/coforge-launcher-focus.py /usr/local/bin/coforge-launcher-focus
+COPY scripts/coforge-dock-ui.py /usr/local/bin/coforge-dock-ui
+COPY scripts/coforge-thunar.sh /usr/local/bin/coforge-thunar
+COPY scripts/coforge-terminal /usr/local/bin/coforge-terminal
+COPY scripts/coforge-dock /usr/local/bin/coforge-dock
+COPY scripts/coforge-maximize-chromium /usr/local/bin/coforge-maximize-chromium
 COPY config/desktop-wallpaper-preview.png /usr/local/share/coforge/desktop-logo.png
 COPY config/xfce/xfce4-desktop.xml /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml
 COPY config/xfce/xfce4-panel.xml /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
 COPY config/xfce/xfwm4.xml /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml
 COPY config/xfce/applications/coforge-chromium.desktop /usr/share/applications/coforge-chromium.desktop
+COPY config/xfce/applications/coforge-terminal.desktop /usr/share/applications/coforge-terminal.desktop
+COPY config/xfce/applications/coforge-thunar.desktop /usr/share/applications/coforge-thunar.desktop
+COPY config/gtk-3.0/gtk.css /etc/xdg/gtk-3.0/gtk.css
 COPY config/chromium/policies/managed/coforge.json /etc/chromium/policies/managed/coforge.json
-RUN chmod 755 /usr/local/bin/entrypoint-foreground.sh \
+RUN mkdir -p /usr/local/lib/coforge \
+  && chmod 755 /usr/local/bin/entrypoint-foreground.sh \
       /usr/local/bin/vnc-ondemand.py \
       /usr/local/bin/vnc-websocket.py \
       /usr/local/bin/vnc-agent-screen.py \
       /usr/local/bin/coforge-chromium \
+      /usr/local/bin/coforge-launcher-focus \
+      /usr/local/bin/coforge-dock-ui \
+      /usr/local/bin/coforge-thunar \
+      /usr/local/bin/coforge-terminal \
+      /usr/local/bin/coforge-dock \
+      /usr/local/bin/coforge-maximize-chromium \
       /usr/local/share/coforge/vnc-xstartup \
       /usr/local/share/coforge/vnc-agent-xstartup \
   && mkdir -p /usr/local/share/coforge /root/.vnc \
@@ -243,9 +262,18 @@ RUN chmod 755 /usr/local/bin/entrypoint-foreground.sh \
   && test -f /usr/local/share/coforge/vnc-desktop.html \
   && test -f /usr/local/share/coforge/desktop-logo.png \
   && test -f /etc/chromium/policies/managed/coforge.json \
-  && grep -q 'placement_mode' /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml \
-  && grep -q 'p=10' /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml \
-  && grep -q -- '--start-maximized' /usr/local/bin/coforge-chromium
+  && grep -q 'placement_ratio' /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml \
+  && grep -q 'show_dock_shadow' /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml \
+  && grep -q 'autohide-size: 48' /etc/xdg/gtk-3.0/gtk.css \
+  && grep -q '<property name="panels" type="array">' /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml \
+  && test -x /usr/local/bin/coforge-dock-ui \
+  && test -x /usr/local/bin/coforge-thunar \
+  && grep -q 'coforge-dock-ui' /usr/local/share/coforge/vnc-xstartup \
+  && grep -q 'coforge-dock-ui' /usr/local/share/coforge/vnc-agent-xstartup \
+  && grep -q '.coforge-dock' /etc/xdg/gtk-3.0/gtk.css \
+  && grep -q -- '--start-maximized' /usr/local/bin/coforge-chromium \
+  && test -x /usr/local/bin/coforge-terminal \
+  && test -x /usr/local/bin/coforge-maximize-chromium
 
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/entrypoint-foreground.sh"]
