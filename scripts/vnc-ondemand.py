@@ -144,24 +144,61 @@ def start_server() -> None:
 
 
 def splice(left: socket.socket, right: socket.socket) -> None:
+    """Copy until either side closes. Never block forever on a full send buffer.
+
+    A framebuffer update can stall sendall() while the peer receive window is
+    full. That thread then misses the browser hangup, so clients never hits
+    zero and idle_loop never stops the desktop.
+    """
     sockets = [left, right]
+    pending: dict[socket.socket, bytes] = {left: b"", right: b""}
+    for item in sockets:
+        item.setblocking(False)
     try:
         while True:
-            readable, _, _ = select.select(sockets, [], [], 60)
-            if not readable:
+            want_write = [item for item in sockets if pending[item]]
+            readable, writable, exceptional = select.select(sockets, want_write, sockets, 60)
+            if exceptional:
+                return
+            if not readable and not writable:
                 continue
+
             for source in readable:
                 target = right if source is left else left
-                data = source.recv(65536)
+                try:
+                    data = source.recv(65536)
+                except BlockingIOError:
+                    continue
+                except OSError:
+                    return
                 if not data:
                     return
-                target.sendall(data)
+                pending[target] += data
+
+            for target in writable:
+                blob = pending[target]
+                if not blob:
+                    continue
+                try:
+                    sent = target.send(blob)
+                except BlockingIOError:
+                    continue
+                except OSError:
+                    return
+                if sent == 0:
+                    return
+                pending[target] = blob[sent:]
     finally:
         for item in sockets:
+            try:
+                item.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
             try:
                 item.close()
             except OSError:
                 pass
+
 
 
 def handle(client: socket.socket) -> None:

@@ -15,9 +15,9 @@ ARG PI_SUITE=npm:@lebronj/pi-suite
 ARG PI_WORKSPACE_DIR=/workspace
 ARG PI_EVOLUTION_ENABLED=1
 ARG NPM_REGISTRY=
-# Debian apt mirror (empty = keep image default sources). China default: Aliyun.
-ARG APT_MIRROR=https://mirrors.aliyun.com/debian
-ARG APT_SECURITY_MIRROR=https://mirrors.aliyun.com/debian-security
+# Debian apt mirror (empty = keep image default sources). China default: Tencent.
+ARG APT_MIRROR=https://mirrors.cloud.tencent.com/debian
+ARG APT_SECURITY_MIRROR=https://mirrors.cloud.tencent.com/debian-security
 ARG COMPUTER_VERSION=
 
 USER root
@@ -161,7 +161,30 @@ RUN ln -sf /root/.npm-global/bin/pi /usr/local/bin/pi.real \
   && chmod +x /usr/local/bin/pi \
   && ln -sf /root/.npm-global/bin/pi-mcp-adapter /usr/local/bin/pi-mcp-adapter || true
 
-# Bake Lenovo ModelFactory DeepSeek into the image so `pi` works without runtime secret injection.
+# Remove the non-root working account inherited from the Cube base image. System
+# accounts such as nobody/daemon remain because Debian packages may rely on them.
+RUN userdel -r user 2>/dev/null || true \
+  && rm -rf /home/user
+
+RUN printf '%s\n' '#!/bin/sh' 'exec /usr/local/bin/coforge-computer __agent-cli "$@"' \
+      > /usr/local/bin/coforge \
+  && chmod 755 /usr/local/bin/coforge
+
+# Optional host snapshot of Pi agent files. Copied first so the bake step below
+# always overwrites apiKey from LENOVO_DEEPSEEK_* build-args (pi.env).
+COPY config/pi-agent/ /tmp/pi-agent/
+RUN if [ -f /tmp/pi-agent/models.json ]; then \
+      mkdir -p /root/.pi/agent/certs; \
+      cp /tmp/pi-agent/models.json /root/.pi/agent/models.json; \
+      if [ -f /tmp/pi-agent/settings.json ]; then cp /tmp/pi-agent/settings.json /root/.pi/agent/settings.json; fi; \
+      if [ -d /tmp/pi-agent/certs ]; then cp -a /tmp/pi-agent/certs/. /root/.pi/agent/certs/; fi; \
+      chmod 600 /root/.pi/agent/models.json; \
+      chmod 644 /root/.pi/agent/certs/* 2>/dev/null || true; \
+    fi; \
+    rm -rf /tmp/pi-agent
+
+# Bake after the snapshot copy so a stale config/pi-agent/models.json cannot
+# clobber the key from pi.env.
 ARG LENOVO_DEEPSEEK_V4_FLASH_API_KEY
 ARG LENOVO_DEEPSEEK_PROVIDER=openai
 ARG LENOVO_DEEPSEEK_MODEL=DeepSeek
@@ -187,28 +210,6 @@ RUN if [ "${INSTALL_PI}" != "1" ]; then \
       grep -q '"defaultModel": "DeepSeek"' /root/.pi/agent/settings.json; \
     fi
 
-# Remove the non-root working account inherited from the Cube base image. System
-# accounts such as nobody/daemon remain because Debian packages may rely on them.
-RUN userdel -r user 2>/dev/null || true \
-  && rm -rf /home/user
-
-RUN printf '%s\n' '#!/bin/sh' 'exec /usr/local/bin/coforge-computer __agent-cli "$@"' \
-      > /usr/local/bin/coforge \
-  && chmod 755 /usr/local/bin/coforge
-
-# This machine's working Pi setup. Gitignored; absent in other checkouts, so the
-# baked DeepSeek config stays. Present here, it is what cloud Agents chat with.
-COPY config/pi-agent/ /tmp/pi-agent/
-RUN if [ -f /tmp/pi-agent/models.json ]; then \
-      cp /tmp/pi-agent/models.json /root/.pi/agent/models.json; \
-      if [ -f /tmp/pi-agent/settings.json ]; then cp /tmp/pi-agent/settings.json /root/.pi/agent/settings.json; fi; \
-      mkdir -p /root/.pi/agent/certs; \
-      if [ -d /tmp/pi-agent/certs ]; then cp -a /tmp/pi-agent/certs/. /root/.pi/agent/certs/; fi; \
-      chmod 600 /root/.pi/agent/models.json; \
-      chmod 644 /root/.pi/agent/certs/* 2>/dev/null || true; \
-    fi; \
-    rm -rf /tmp/pi-agent
-
 COPY scripts/entrypoint-foreground.sh /usr/local/bin/entrypoint-foreground.sh
 COPY scripts/vnc-ondemand.py /usr/local/bin/vnc-ondemand.py
 COPY scripts/vnc-websocket.py /usr/local/bin/vnc-websocket.py
@@ -228,6 +229,7 @@ COPY config/desktop-wallpaper-preview.png /usr/local/share/coforge/desktop-logo.
 COPY config/xfce/xfce4-desktop.xml /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml
 COPY config/xfce/xfce4-panel.xml /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
 COPY config/xfce/xfwm4.xml /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml
+COPY config/xfce/xfce4-session.xml /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-session.xml
 COPY config/xfce/applications/coforge-chromium.desktop /usr/share/applications/coforge-chromium.desktop
 COPY config/xfce/applications/coforge-terminal.desktop /usr/share/applications/coforge-terminal.desktop
 COPY config/xfce/applications/coforge-thunar.desktop /usr/share/applications/coforge-thunar.desktop
@@ -266,6 +268,7 @@ RUN mkdir -p /usr/local/lib/coforge \
   && grep -q 'show_dock_shadow' /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml \
   && grep -q 'autohide-size: 48' /etc/xdg/gtk-3.0/gtk.css \
   && grep -q '<property name="panels" type="array">' /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml \
+  && ! grep -q '>xfce4-panel<' /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-session.xml \
   && test -x /usr/local/bin/coforge-dock-ui \
   && test -x /usr/local/bin/coforge-thunar \
   && grep -q 'coforge-dock-ui' /usr/local/share/coforge/vnc-xstartup \

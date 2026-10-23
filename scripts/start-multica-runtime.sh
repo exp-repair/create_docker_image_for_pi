@@ -101,7 +101,7 @@ mkdir -p "${MULTICA_HOME}/.multica"
 # Halt any previous supervisor before rewriting runtime config.
 stop_multica_daemon_supervisor
 
-if [[ -n "${TEAM_PI_CONFIG:-}" || -n "${TEAM_API_KEY:-}" || -n "${TEAM_BASE_URL:-}" || -n "${TEAM_MODEL:-}" || -n "${TEAM_PROVIDER:-}" || -n "${BRIDGE_USER_ID:-}" || -n "${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:-}" ]]; then
+if [[ -n "${TEAM_PI_CONFIG:-}" || -n "${TEAM_API_KEY:-}" || -n "${TEAM_BASE_URL:-}" || -n "${TEAM_MODEL:-}" || -n "${TEAM_PROVIDER:-}" || -n "${BRIDGE_USER_ID:-}" || -n "${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:-}" || -f /root/.pi/agent/model-factory.env ]]; then
   configure-pi-runtime.sh
 else
   log "TEAM_PI_CONFIG / TEAM_* / LENOVO_DEEPSEEK_V4_FLASH_API_KEY not provided; leaving Pi config unchanged"

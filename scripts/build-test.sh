@@ -207,8 +207,8 @@ trap restore_production_multica_bin EXIT
 EXTRA=(
   --build-arg "SANDBOX_IMAGE=${SANDBOX_IMAGE}"
   --build-arg "NODE_MAJOR=${NODE_MAJOR:-22}"
-  --build-arg "APT_MIRROR=${APT_MIRROR:-https://mirrors.aliyun.com/debian}"
-  --build-arg "APT_SECURITY_MIRROR=${APT_SECURITY_MIRROR:-https://mirrors.aliyun.com/debian-security}"
+  --build-arg "APT_MIRROR=${APT_MIRROR:-https://mirrors.cloud.tencent.com/debian}"
+  --build-arg "APT_SECURITY_MIRROR=${APT_SECURITY_MIRROR:-https://mirrors.cloud.tencent.com/debian-security}"
   --build-arg "PIP_INDEX_URL=${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
   --build-arg "PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST:-mirrors.aliyun.com}"
 )
@@ -296,7 +296,7 @@ else
 fi
 
 echo "[build-test.sh] SANDBOX_IMAGE=${SANDBOX_IMAGE}"
-echo "[build-test.sh] APT_MIRROR=${APT_MIRROR:-https://mirrors.aliyun.com/debian}"
+echo "[build-test.sh] APT_MIRROR=${APT_MIRROR:-https://mirrors.cloud.tencent.com/debian}"
 echo "[build-test.sh] PIP_INDEX_URL=${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
 echo "[build-test.sh] tag=${TAG}"
 docker build "${EXTRA[@]}" -t "${TAG}" .

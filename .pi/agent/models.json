@@ -2,7 +2,7 @@
   "providers": {
     "openai": {
       "baseUrl": "https://modelfactory.lenovo.com/llm/v1",
-      "apiKey": "sk-46aa903d837d502e29ed922f7f4ccfd5ac2c298d7e9bbb3b",
+      "apiKey": "sk-2733a2897e2699fa0986239cf66d67a2e938c1be5dd3febf",
       "api": "openai-completions",
       "compat": {
         "supportsDeveloperRole": false,
