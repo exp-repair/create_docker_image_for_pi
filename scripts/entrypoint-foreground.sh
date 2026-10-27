@@ -28,12 +28,7 @@ if [[ "${VNC_ENABLE:-1}" != "0" ]]; then
   fi
 fi
 
-# A newer binary on the data volume replaces the one baked into the image.
-# Seeding and selection never block desktop startup.
-computer_bin="/usr/local/bin/coforge-computer"
-if [[ -x /usr/local/bin/select-computer-binary.sh ]]; then
-  if selected="$(/usr/local/bin/select-computer-binary.sh)"; then
-    [[ -n "${selected}" && -x "${selected}" ]] && computer_bin="${selected}"
-  fi
-fi
-exec "${computer_bin}" foreground
+# The supervisor stays up and runs the selected program as a child, so a
+# runtime upgrade can replace that program without recreating the container.
+# Seeding and selection happen when the child starts.
+exec /usr/local/bin/supervise-computer-runtime.sh

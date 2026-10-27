@@ -1,6 +1,7 @@
-# Staging Swarm computer image. The host starts this image with no command, so
-# the entrypoint is `coforge-computer foreground`. The host injects the binding
-# environment; this image does not run `setup --workspace`.
+# Staging Swarm computer image. The host starts this image with no command.
+# The entrypoint keeps the desktop listeners up and runs `coforge-computer
+# foreground` as a child. The host injects the binding environment; this image
+# does not run `setup --workspace`.
 # Pi, DeepSeek, and the Lenovo CA stay in the image. The desktop is a slim
 # XFCE session: Chromium, Thunar, and a terminal, with the CoForge mark on
 # the wallpaper. It stays down until a client connects.
@@ -213,6 +214,8 @@ RUN if [ "${INSTALL_PI}" != "1" ]; then \
 COPY scripts/persist-user-data.sh /usr/local/bin/persist-user-data.sh
 COPY scripts/select-computer-binary.sh /usr/local/bin/select-computer-binary.sh
 COPY scripts/activate-computer-release.sh /usr/local/bin/activate-computer-release.sh
+COPY scripts/supervise-computer-runtime.sh /usr/local/bin/supervise-computer-runtime.sh
+COPY scripts/restart-computer-runtime.sh /usr/local/bin/restart-computer-runtime.sh
 COPY scripts/entrypoint-foreground.sh /usr/local/bin/entrypoint-foreground.sh
 COPY scripts/vnc-ondemand.py /usr/local/bin/vnc-ondemand.py
 COPY scripts/vnc-websocket.py /usr/local/bin/vnc-websocket.py
@@ -244,6 +247,8 @@ RUN mkdir -p /usr/local/lib/coforge /usr/local/share/coforge \
   && chmod 755 /usr/local/bin/persist-user-data.sh \
       /usr/local/bin/select-computer-binary.sh \
       /usr/local/bin/activate-computer-release.sh \
+      /usr/local/bin/supervise-computer-runtime.sh \
+      /usr/local/bin/restart-computer-runtime.sh \
       /usr/local/bin/entrypoint-foreground.sh \
       /usr/local/bin/vnc-ondemand.py \
       /usr/local/bin/vnc-websocket.py \
@@ -290,7 +295,9 @@ RUN mkdir -p /usr/local/lib/coforge /usr/local/share/coforge \
   && test -x /usr/local/bin/coforge-maximize-chromium \
   && test -x /usr/local/bin/persist-user-data.sh \
   && test -x /usr/local/bin/select-computer-binary.sh \
-  && test -x /usr/local/bin/activate-computer-release.sh
+  && test -x /usr/local/bin/activate-computer-release.sh \
+  && test -x /usr/local/bin/supervise-computer-runtime.sh \
+  && test -x /usr/local/bin/restart-computer-runtime.sh
 
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/entrypoint-foreground.sh"]
