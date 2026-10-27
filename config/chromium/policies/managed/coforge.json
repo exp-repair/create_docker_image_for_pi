@@ -1,3 +1,5 @@
 {
-  "CommandLineFlagSecurityWarningsEnabled": false
+  "CommandLineFlagSecurityWarningsEnabled": false,
+  "PasswordManagerEnabled": false,
+  "PasswordLeakDetectionEnabled": false
 }

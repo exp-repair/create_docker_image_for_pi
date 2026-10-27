@@ -69,6 +69,16 @@ class AgentScreens:
         self._screens = {}
         self._starting = {}
 
+    def lookup(self, agent_id: str):
+        """The running screen's display, without holding it open."""
+        if not AGENT_ID.fullmatch(agent_id or ""):
+            return None
+        with self._lock:
+            screen = self._screens.get(agent_id)
+            if screen is None or not self._alive(screen):
+                return None
+            return {"display": f":{screen['number']}"}
+
     def hold(self, agent_id: str) -> dict:
         screen = self._ensure(agent_id)
         with self._lock:

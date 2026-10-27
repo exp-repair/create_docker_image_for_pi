@@ -90,6 +90,24 @@ persist_home() {
   fi
 }
 
+restore_opt_launchers() {
+  if [[ -x /opt/wechat/wechat ]]; then
+    ln -sfn /opt/wechat/wechat /usr/bin/wechat
+  fi
+  local devtools="/opt/apps/io.github.msojocs.wechat-devtools-linux/files/bin/bin/wechat-devtools"
+  if [[ -x "${devtools}" && ! -e /usr/local/bin/wechat-devtools-open.sh ]]; then
+    cat > /usr/local/bin/wechat-devtools-open.sh <<EOF
+#!/bin/bash
+if [[ \$# -eq 0 && -d /root/projects/wechatapp ]]; then
+  exec "${devtools}" /root/projects/wechatapp
+fi
+exec "${devtools}" "\$@"
+EOF
+    chmod 755 /usr/local/bin/wechat-devtools-open.sh
+    log "restored /usr/local/bin/wechat-devtools-open.sh"
+  fi
+}
+
 copy_opt_desktops() {
   local apps_dir="/root/.local/share/applications"
   mkdir -p "${apps_dir}"
@@ -125,16 +143,23 @@ persist_opt() {
       done
       shopt -u nullglob
     fi
+    restore_opt_launchers
     return 0
   fi
   [[ -d /opt ]] || return 0
   shopt -s nullglob
+  # After an image replace /opt is empty; put store trees back first.
+  for store in "${APPS}"/*; do
+    [[ -e "${store}" || -L "${store}" ]] || continue
+    persist_one "/opt/$(basename "${store}")" "${store}"
+  done
   for entry in /opt/*; do
     [[ -e "${entry}" || -L "${entry}" ]] || continue
     persist_one "${entry}" "${APPS}/$(basename "${entry}")"
   done
   shopt -u nullglob
   copy_opt_desktops
+  restore_opt_launchers
 }
 
 if [[ ! -d "${VOLUME}" ]]; then

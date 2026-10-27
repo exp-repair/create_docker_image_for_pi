@@ -28,4 +28,12 @@ if [[ "${VNC_ENABLE:-1}" != "0" ]]; then
   fi
 fi
 
-exec /usr/local/bin/coforge-computer foreground
+# A newer binary on the data volume replaces the one baked into the image.
+# Seeding and selection never block desktop startup.
+computer_bin="/usr/local/bin/coforge-computer"
+if [[ -x /usr/local/bin/select-computer-binary.sh ]]; then
+  if selected="$(/usr/local/bin/select-computer-binary.sh)"; then
+    [[ -n "${selected}" && -x "${selected}" ]] && computer_bin="${selected}"
+  fi
+fi
+exec "${computer_bin}" foreground

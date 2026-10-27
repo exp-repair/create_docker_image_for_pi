@@ -211,9 +211,12 @@ RUN if [ "${INSTALL_PI}" != "1" ]; then \
     fi
 
 COPY scripts/persist-user-data.sh /usr/local/bin/persist-user-data.sh
+COPY scripts/select-computer-binary.sh /usr/local/bin/select-computer-binary.sh
+COPY scripts/activate-computer-release.sh /usr/local/bin/activate-computer-release.sh
 COPY scripts/entrypoint-foreground.sh /usr/local/bin/entrypoint-foreground.sh
 COPY scripts/vnc-ondemand.py /usr/local/bin/vnc-ondemand.py
 COPY scripts/vnc-websocket.py /usr/local/bin/vnc-websocket.py
+COPY scripts/page-fill.py /usr/local/bin/page-fill.py
 COPY scripts/vnc-xstartup /usr/local/share/coforge/vnc-xstartup
 COPY scripts/vnc-agent-xstartup /usr/local/share/coforge/vnc-agent-xstartup
 COPY scripts/vnc-agent-screen.py /usr/local/bin/vnc-agent-screen.py
@@ -236,11 +239,15 @@ COPY config/xfce/applications/coforge-terminal.desktop /usr/share/applications/c
 COPY config/xfce/applications/coforge-thunar.desktop /usr/share/applications/coforge-thunar.desktop
 COPY config/gtk-3.0/gtk.css /etc/xdg/gtk-3.0/gtk.css
 COPY config/chromium/policies/managed/coforge.json /etc/chromium/policies/managed/coforge.json
-RUN mkdir -p /usr/local/lib/coforge \
+RUN mkdir -p /usr/local/lib/coforge /usr/local/share/coforge \
+  && if [ -n "${COMPUTER_VERSION}" ]; then printf '%s\n' "${COMPUTER_VERSION}" > /usr/local/share/coforge/computer-version; fi \
   && chmod 755 /usr/local/bin/persist-user-data.sh \
+      /usr/local/bin/select-computer-binary.sh \
+      /usr/local/bin/activate-computer-release.sh \
       /usr/local/bin/entrypoint-foreground.sh \
       /usr/local/bin/vnc-ondemand.py \
       /usr/local/bin/vnc-websocket.py \
+      /usr/local/bin/page-fill.py \
       /usr/local/bin/vnc-agent-screen.py \
       /usr/local/bin/coforge-chromium \
       /usr/local/bin/coforge-launcher-focus \
@@ -261,11 +268,13 @@ RUN mkdir -p /usr/local/lib/coforge \
   && dpkg --purge librsvg2-bin \
   && command -v tigervncserver \
   && command -v startxfce4 \
+  && ln -sfn coforge-chromium /usr/local/bin/chromium \
   && command -v chromium \
   && test -f /usr/share/novnc/core/rfb.js \
   && test -f /usr/local/share/coforge/vnc-desktop.html \
   && test -f /usr/local/share/coforge/desktop-logo.png \
   && test -f /etc/chromium/policies/managed/coforge.json \
+  && grep -q '"PasswordManagerEnabled": false' /etc/chromium/policies/managed/coforge.json \
   && grep -q 'placement_ratio' /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml \
   && grep -q 'show_dock_shadow' /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml \
   && grep -q 'autohide-size: 48' /etc/xdg/gtk-3.0/gtk.css \
@@ -279,7 +288,9 @@ RUN mkdir -p /usr/local/lib/coforge \
   && grep -q -- '--start-maximized' /usr/local/bin/coforge-chromium \
   && test -x /usr/local/bin/coforge-terminal \
   && test -x /usr/local/bin/coforge-maximize-chromium \
-  && test -x /usr/local/bin/persist-user-data.sh
+  && test -x /usr/local/bin/persist-user-data.sh \
+  && test -x /usr/local/bin/select-computer-binary.sh \
+  && test -x /usr/local/bin/activate-computer-release.sh
 
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/entrypoint-foreground.sh"]

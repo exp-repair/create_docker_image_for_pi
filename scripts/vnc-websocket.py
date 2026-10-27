@@ -9,6 +9,7 @@ import base64
 import hashlib
 import hmac
 import importlib.util
+import json
 import os
 import posixpath
 import secrets
@@ -417,6 +418,106 @@ def bridge(conn: socket.socket, vnc_port: int = VNC_PORT) -> None:
         vnc.close()
 
 
+def load_page_fill():
+    sibling = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page-fill.py")
+    spec = importlib.util.spec_from_file_location("page_fill", sibling)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("page-fill.py is missing")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def read_chunked(conn: socket.socket, rest: bytes):
+    buf = bytearray(rest)
+    body = bytearray()
+
+    def need(size: int) -> bool:
+        while len(buf) < size:
+            chunk = conn.recv(4096)
+            if not chunk:
+                return False
+            buf.extend(chunk)
+        return True
+
+    while True:
+        while b"\r\n" not in buf:
+            chunk = conn.recv(4096)
+            if not chunk:
+                return None
+            buf.extend(chunk)
+        line, _, leftover = bytes(buf).partition(b"\r\n")
+        buf[:] = leftover
+        try:
+            size = int(line.split(b";", 1)[0].strip(), 16)
+        except ValueError:
+            return None
+        if size == 0:
+            while b"\r\n" not in buf:
+                chunk = conn.recv(4096)
+                if not chunk:
+                    break
+                buf.extend(chunk)
+            return bytes(body)
+        if size < 0 or len(body) + size > 65536:
+            return None
+        if not need(size + 2):
+            return None
+        body.extend(buf[:size])
+        del buf[:size]
+        if buf[:2] != b"\r\n":
+            return None
+        del buf[:2]
+
+
+def read_body(conn: socket.socket, headers: dict, rest: bytes):
+    if "chunked" in headers.get("transfer-encoding", "").lower():
+        return read_chunked(conn, rest)
+    raw = headers.get("content-length", "")
+    if not raw.isdigit():
+        return None
+    length = int(raw)
+    if length > 65536:
+        return None
+    body = bytearray(rest)
+    while len(body) < length:
+        chunk = conn.recv(length - len(body))
+        if not chunk:
+            return None
+        body += chunk
+    return bytes(body[:length])
+
+
+def handle_fill(conn: socket.socket, headers: dict, query: str, rest: bytes, token: str, display: str) -> None:
+    """Write the posted fields into Chromium. The body is not logged."""
+    if not token_ok(request_token(headers, query), token):
+        send_http(conn, "401 Unauthorized", b"", "text/plain")
+        return
+    body = read_body(conn, headers, rest)
+    if body is None:
+        send_http(conn, "400 Bad Request", b"", "text/plain")
+        return
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError, TypeError):
+        send_http(conn, "400 Bad Request", b"", "text/plain")
+        return
+    fields = payload.get("fields") if isinstance(payload, dict) else None
+    module = load_page_fill()
+    try:
+        result = module.fill_display(display, fields)
+    except module.FillError as exc:
+        status = "409 Conflict" if exc.code == "browser_not_open" else "422 Unprocessable Entity"
+        if exc.code in ("bad_request", "bad_display"):
+            status = "400 Bad Request"
+        reply = {"error": exc.code}
+        if exc.field:
+            reply["field"] = exc.field
+        send_http(conn, status, json.dumps(reply).encode(), "application/json")
+        return
+    send_http(conn, "200 OK", json.dumps(result).encode(), "application/json")
+
+
 def handle_http(conn: socket.socket, expected_token: str) -> None:
     data = bytearray()
     while b"\r\n\r\n" not in data:
@@ -438,6 +539,15 @@ def handle_http(conn: socket.socket, expected_token: str) -> None:
     parsed = urlsplit(target)
     headers = header_map(text)
     screen = SCREEN_TARGET(parsed.path) if SCREEN_TARGET is not None else None
+    if method == "POST" and (parsed.path == "/fill" or (screen is not None and screen[1] == "fill")):
+        agent_id = screen[0] if screen is not None and screen[1] == "fill" else ""
+        display = os.environ.get("VNC_DISPLAY", ":1")
+        if agent_id and SCREENS is not None:
+            found = SCREENS.lookup(agent_id)
+            if found and found.get("display"):
+                display = found["display"]
+        handle_fill(conn, headers, parsed.query, rest, expected_token, display)
+        return
     if screen is not None and method == "GET":
         agent_id, kind = screen
         if kind == "page":
