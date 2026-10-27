@@ -10,6 +10,13 @@ if [[ -n "${host}" && -n "${ip}" && -w /etc/hosts ]] && ! grep -Eq "(^|[[:space:
   printf '%s %s\n' "${ip}" "${host}" >> /etc/hosts
 fi
 
+if [[ -x /usr/local/bin/persist-user-data.sh ]]; then
+  /usr/local/bin/persist-user-data.sh || echo "[entrypoint] persist-user-data.sh failed" >&2
+  if ! mountpoint -q /opt 2>/dev/null; then
+    /usr/local/bin/persist-user-data.sh --watch >/tmp/persist-user-data-watch.log 2>&1 &
+  fi
+fi
+
 # The shared desktop stays down until a VNC or browser client connects.
 # Each Agent's screen is started by vnc-websocket on demand, and held through
 # 127.0.0.1:6091 while that Agent is running.

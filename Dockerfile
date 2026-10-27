@@ -210,6 +210,7 @@ RUN if [ "${INSTALL_PI}" != "1" ]; then \
       grep -q '"defaultModel": "DeepSeek"' /root/.pi/agent/settings.json; \
     fi
 
+COPY scripts/persist-user-data.sh /usr/local/bin/persist-user-data.sh
 COPY scripts/entrypoint-foreground.sh /usr/local/bin/entrypoint-foreground.sh
 COPY scripts/vnc-ondemand.py /usr/local/bin/vnc-ondemand.py
 COPY scripts/vnc-websocket.py /usr/local/bin/vnc-websocket.py
@@ -236,7 +237,8 @@ COPY config/xfce/applications/coforge-thunar.desktop /usr/share/applications/cof
 COPY config/gtk-3.0/gtk.css /etc/xdg/gtk-3.0/gtk.css
 COPY config/chromium/policies/managed/coforge.json /etc/chromium/policies/managed/coforge.json
 RUN mkdir -p /usr/local/lib/coforge \
-  && chmod 755 /usr/local/bin/entrypoint-foreground.sh \
+  && chmod 755 /usr/local/bin/persist-user-data.sh \
+      /usr/local/bin/entrypoint-foreground.sh \
       /usr/local/bin/vnc-ondemand.py \
       /usr/local/bin/vnc-websocket.py \
       /usr/local/bin/vnc-agent-screen.py \
@@ -276,7 +278,8 @@ RUN mkdir -p /usr/local/lib/coforge \
   && grep -q '.coforge-dock' /etc/xdg/gtk-3.0/gtk.css \
   && grep -q -- '--start-maximized' /usr/local/bin/coforge-chromium \
   && test -x /usr/local/bin/coforge-terminal \
-  && test -x /usr/local/bin/coforge-maximize-chromium
+  && test -x /usr/local/bin/coforge-maximize-chromium \
+  && test -x /usr/local/bin/persist-user-data.sh
 
 WORKDIR /workspace
 ENTRYPOINT ["/usr/local/bin/entrypoint-foreground.sh"]
