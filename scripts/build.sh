@@ -11,6 +11,8 @@ EXTRA=(
   --build-arg "NODE_MAJOR=${NODE_MAJOR:-22}"
   --build-arg "APT_MIRROR=${APT_MIRROR:-https://mirrors.cloud.tencent.com/debian}"
   --build-arg "APT_SECURITY_MIRROR=${APT_SECURITY_MIRROR:-https://mirrors.cloud.tencent.com/debian-security}"
+  --build-arg "PIP_INDEX_URL=${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
+  --build-arg "PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST:-mirrors.aliyun.com}"
 )
 mkdir -p coforge
 if [[ -n "${COFORGE_RELEASE_FEED_URL:-}" ]]; then
@@ -96,6 +98,7 @@ fi
 
 echo "[build.sh] SANDBOX_IMAGE=${SANDBOX_IMAGE}"
 echo "[build.sh] APT_MIRROR=${APT_MIRROR:-https://mirrors.cloud.tencent.com/debian}"
+echo "[build.sh] PIP_INDEX_URL=${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
 echo "[build.sh] tag=${TAG}"
 # The host proxy listens on 127.0.0.1, which is the build container itself.
 # Keep it for the release download above, and let apt use the mirror directly.

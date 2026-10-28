@@ -32,6 +32,7 @@ echo "=== key paths and binaries ==="
 ${DOCKER_BIN} exec "${CID}" sh -c \
   'ls -la /workspace /workspace/uploads /workspace/browser-shots /data/browser-profile 2>&1; \
    for c in python3 node npm chromium rg fd pi cursor-agent multica Xvfb x11vnc websockify openbox; do printf "%s=" "$c"; command -v "$c" || true; done; \
+   python3 -c "from playwright.sync_api import sync_playwright; print(\"playwright=ok\")" 2>&1 || true; \
    pi --version 2>/dev/null || true; \
    cursor-agent --version 2>/dev/null || true; \
    multica version 2>/dev/null || true'

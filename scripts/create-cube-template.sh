@@ -76,10 +76,18 @@ test -x /usr/local/bin/coforge-chromium
 test -f /usr/local/share/coforge/desktop-logo.png
 test -f /root/.pi/agent/models.json
 test -f /root/.pi/agent/settings.json
+test -f /root/.pi/agent/APPEND_SYSTEM.md
+test -f /usr/local/share/coforge/pi-APPEND_SYSTEM.md
+grep -q "CoForge" /root/.pi/agent/APPEND_SYSTEM.md
+test -f /root/.pi/agent/skills/cloud-computer-overview/SKILL.md
+test -f /root/.pi/agent/skills/browser-login/SKILL.md
+test -f /usr/local/share/coforge/pi-skills/browser-login/SKILL.md
 grep -q "https://modelfactory.lenovo.com/llm/v1" /root/.pi/agent/models.json
 grep -q '"defaultModel": "DeepSeek"' /root/.pi/agent/settings.json
 command -v pi >/dev/null 2>&1 || test -x /root/.npm-global/bin/pi
 command -v cursor-agent >/dev/null 2>&1 || test -x /usr/local/bin/cursor-agent || test -x /root/.local/bin/cursor-agent
+python3 -c "from playwright.sync_api import sync_playwright"
+command -v chromium >/dev/null 2>&1
 ! id user >/dev/null 2>&1
 '
 

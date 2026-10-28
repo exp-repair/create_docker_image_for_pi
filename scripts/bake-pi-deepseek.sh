@@ -29,6 +29,30 @@ fi
 
 mkdir -p "${AGENT_DIR}" "${CERTS_DIR}"
 
+APPEND_SYSTEM_TEMPLATE="${PI_APPEND_SYSTEM_TEMPLATE:-/usr/local/share/coforge/pi-APPEND_SYSTEM.md}"
+if [[ -f "${APPEND_SYSTEM_TEMPLATE}" ]]; then
+  cp "${APPEND_SYSTEM_TEMPLATE}" "${AGENT_DIR}/APPEND_SYSTEM.md"
+  chmod 644 "${AGENT_DIR}/APPEND_SYSTEM.md" || true
+  log "installed APPEND_SYSTEM.md from ${APPEND_SYSTEM_TEMPLATE}"
+elif [[ ! -f "${AGENT_DIR}/APPEND_SYSTEM.md" ]]; then
+  log "WARN: APPEND_SYSTEM template missing at ${APPEND_SYSTEM_TEMPLATE}"
+fi
+
+SKILLS_TEMPLATE="${PI_SKILLS_TEMPLATE:-/usr/local/share/coforge/pi-skills}"
+SKILLS_DIR="${AGENT_DIR}/skills"
+if [[ -d "${SKILLS_TEMPLATE}" ]]; then
+  mkdir -p "${SKILLS_DIR}"
+  for skill_name in cloud-computer-overview browser-login; do
+    if [[ -d "${SKILLS_TEMPLATE}/${skill_name}" ]]; then
+      rm -rf "${SKILLS_DIR}/${skill_name}"
+      cp -a "${SKILLS_TEMPLATE}/${skill_name}" "${SKILLS_DIR}/${skill_name}"
+    fi
+  done
+  log "installed Pi skills from ${SKILLS_TEMPLATE}"
+elif [[ ! -d "${SKILLS_DIR}/cloud-computer-overview" ]]; then
+  log "WARN: Pi skills template missing at ${SKILLS_TEMPLATE}"
+fi
+
 if [[ ! -f "${CA_CERT_FILE}" && -f /root/.pi/agent/certs/lenovo-modelfactory-ca.pem ]]; then
   cp /root/.pi/agent/certs/lenovo-modelfactory-ca.pem "${CA_CERT_FILE}"
 fi

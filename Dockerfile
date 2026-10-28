@@ -19,12 +19,16 @@ ARG NPM_REGISTRY=
 # Debian apt mirror (empty = keep image default sources). China default: Tencent.
 ARG APT_MIRROR=https://mirrors.cloud.tencent.com/debian
 ARG APT_SECURITY_MIRROR=https://mirrors.cloud.tencent.com/debian-security
+# PyPI mirror for baking playwright (and friends) from requirements.txt.
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
 ARG COMPUTER_VERSION=
 
 USER root
 
 ENV HOME=/root \
     PYTHONUNBUFFERED=1 \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     PI_WEB_HOST=0.0.0.0 \
     PI_WEB_PORT=6079 \
     PI_WEB_WORKSPACE=/workspace \
@@ -88,6 +92,7 @@ RUN set -eux; \
     thunar \
     xfce4-terminal \
     python3-gi \
+    python3-pip \
     gir1.2-gtk-3.0 \
     chromium \
   && mkdir -p /etc/apt/keyrings \
@@ -106,6 +111,22 @@ RUN set -eux; \
        if dpkg -s "$pkg" >/dev/null 2>&1; then dpkg --force-depends --purge "$pkg"; fi; \
      done \
   && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Python packages for the cloud computer (Playwright talks to system Chromium;
+# do not run `playwright install chromium`).
+COPY requirements.txt /tmp/requirements.txt
+RUN set -eux; \
+  pip_args="--no-cache-dir --break-system-packages"; \
+  if [ -n "${PIP_INDEX_URL}" ]; then \
+    pip_args="${pip_args} -i ${PIP_INDEX_URL}"; \
+  fi; \
+  if [ -n "${PIP_TRUSTED_HOST}" ]; then \
+    pip_args="${pip_args} --trusted-host ${PIP_TRUSTED_HOST}"; \
+  fi; \
+  # shellcheck disable=SC2086
+  pip3 install ${pip_args} -r /tmp/requirements.txt; \
+  python3 -c 'from playwright.sync_api import sync_playwright; print("playwright import ok")'; \
+  rm -f /tmp/requirements.txt
 
 COPY lenovo-modelfactory-ca.pem /root/.pi/agent/certs/lenovo-modelfactory-ca.pem
 COPY scripts/lenovo-modelfactory-dns-hook.js /usr/local/lib/lenovo-modelfactory-dns-hook.js
@@ -126,9 +147,13 @@ LABEL org.coforge.computer.version=${COMPUTER_VERSION}
 COPY scripts/bake-pi-deepseek.sh /usr/local/bin/bake-pi-deepseek.sh
 COPY scripts/container-systemctl /usr/local/bin/systemctl
 COPY config/pi-modelfactory-provider.json /usr/local/share/coforge/pi-modelfactory-provider.json
+COPY config/pi-agent/APPEND_SYSTEM.md /usr/local/share/coforge/pi-APPEND_SYSTEM.md
+COPY config/pi-agent/skills/ /usr/local/share/coforge/pi-skills/
 RUN chmod 755 /usr/local/bin/coforge-computer \
   /usr/local/bin/bake-pi-deepseek.sh \
-  /usr/local/bin/systemctl
+  /usr/local/bin/systemctl \
+  && chmod 644 /usr/local/share/coforge/pi-APPEND_SYSTEM.md \
+  && find /usr/local/share/coforge/pi-skills -type f -name 'SKILL.md' -exec chmod 644 {} +
 
 RUN npm config set prefix /root/.npm-global \
   && npm config set fetch-retries 5 \
@@ -173,9 +198,17 @@ RUN printf '%s\n' '#!/bin/sh' 'exec /usr/local/bin/coforge-computer __agent-cli 
 
 # Optional host snapshot of Pi agent files. Copied first so the bake step below
 # always overwrites apiKey from LENOVO_DEEPSEEK_* build-args (pi.env).
+# APPEND_SYSTEM.md and skills are always installed from share templates so Pi
+# knows it is a CoForge cloud-computer agent with browser/desktop capabilities.
 COPY config/pi-agent/ /tmp/pi-agent/
-RUN if [ -f /tmp/pi-agent/models.json ]; then \
-      mkdir -p /root/.pi/agent/certs; \
+RUN mkdir -p /root/.pi/agent/certs /root/.pi/agent/skills \
+  && cp /usr/local/share/coforge/pi-APPEND_SYSTEM.md /root/.pi/agent/APPEND_SYSTEM.md \
+  && chmod 644 /root/.pi/agent/APPEND_SYSTEM.md \
+  && for skill_name in cloud-computer-overview browser-login; do \
+       rm -rf "/root/.pi/agent/skills/${skill_name}"; \
+       cp -a "/usr/local/share/coforge/pi-skills/${skill_name}" "/root/.pi/agent/skills/${skill_name}"; \
+     done \
+  && if [ -f /tmp/pi-agent/models.json ]; then \
       cp /tmp/pi-agent/models.json /root/.pi/agent/models.json; \
       if [ -f /tmp/pi-agent/settings.json ]; then cp /tmp/pi-agent/settings.json /root/.pi/agent/settings.json; fi; \
       if [ -d /tmp/pi-agent/certs ]; then cp -a /tmp/pi-agent/certs/. /root/.pi/agent/certs/; fi; \
@@ -206,6 +239,11 @@ RUN if [ "${INSTALL_PI}" != "1" ]; then \
       test -f /root/.pi/agent/models.json; \
       test -f /root/.pi/agent/settings.json; \
       test -f /root/.pi/agent/model-factory.env; \
+      test -f /root/.pi/agent/APPEND_SYSTEM.md; \
+      grep -q 'CoForge' /root/.pi/agent/APPEND_SYSTEM.md; \
+      test -f /root/.pi/agent/skills/cloud-computer-overview/SKILL.md; \
+      test -f /root/.pi/agent/skills/browser-login/SKILL.md; \
+      grep -q 'name: browser-login' /root/.pi/agent/skills/browser-login/SKILL.md; \
       grep -q 'https://modelfactory.lenovo.com/llm/v1' /root/.pi/agent/models.json; \
       grep -q '"id": "DeepSeek"' /root/.pi/agent/models.json; \
       grep -q '"defaultModel": "DeepSeek"' /root/.pi/agent/settings.json; \

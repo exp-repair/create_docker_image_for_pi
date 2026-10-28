@@ -17,6 +17,10 @@ SETTINGS_FILE="${AGENT_DIR}/settings.json"
 CERTS_DIR="${AGENT_DIR}/certs"
 CA_CERT_FILE="${LENOVO_MODELFACTORY_CA_CERT:-${CERTS_DIR}/lenovo-modelfactory-ca.pem}"
 MODEL_FACTORY_ENV_FILE="${LENOVO_MODEL_FACTORY_ENV_FILE:-${AGENT_DIR}/model-factory.env}"
+APPEND_SYSTEM_TEMPLATE="${PI_APPEND_SYSTEM_TEMPLATE:-/usr/local/share/coforge/pi-APPEND_SYSTEM.md}"
+APPEND_SYSTEM_FILE="${AGENT_DIR}/APPEND_SYSTEM.md"
+SKILLS_TEMPLATE="${PI_SKILLS_TEMPLATE:-/usr/local/share/coforge/pi-skills}"
+SKILLS_DIR="${AGENT_DIR}/skills"
 TEAM_BASE_URL="${TEAM_BASE_URL:-https://claude-code.club/openai/v1}"
 TEAM_MODEL="${TEAM_MODEL:-gpt-5.5}"
 TEAM_PROVIDER="${TEAM_PROVIDER:-openai}"
@@ -126,6 +130,25 @@ if [[ -z "${BRIDGE_USER_ID}" ]]; then
 fi
 
 mkdir -p "${AGENT_DIR}"
+if [[ -f "${APPEND_SYSTEM_TEMPLATE}" ]]; then
+  cp "${APPEND_SYSTEM_TEMPLATE}" "${APPEND_SYSTEM_FILE}"
+  chmod 644 "${APPEND_SYSTEM_FILE}" || true
+  log "installed APPEND_SYSTEM.md from ${APPEND_SYSTEM_TEMPLATE}"
+elif [[ ! -f "${APPEND_SYSTEM_FILE}" ]]; then
+  log "WARN: APPEND_SYSTEM template missing at ${APPEND_SYSTEM_TEMPLATE}"
+fi
+if [[ -d "${SKILLS_TEMPLATE}" ]]; then
+  mkdir -p "${SKILLS_DIR}"
+  for skill_name in cloud-computer-overview browser-login; do
+    if [[ -d "${SKILLS_TEMPLATE}/${skill_name}" ]]; then
+      rm -rf "${SKILLS_DIR}/${skill_name}"
+      cp -a "${SKILLS_TEMPLATE}/${skill_name}" "${SKILLS_DIR}/${skill_name}"
+    fi
+  done
+  log "installed Pi skills from ${SKILLS_TEMPLATE}"
+elif [[ ! -d "${SKILLS_DIR}/cloud-computer-overview" ]]; then
+  log "WARN: Pi skills template missing at ${SKILLS_TEMPLATE}"
+fi
 ensure_lenovo_ca
 ensure_lenovo_dns
 write_model_factory_env
