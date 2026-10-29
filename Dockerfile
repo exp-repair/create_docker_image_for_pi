@@ -291,6 +291,21 @@ COPY config/xfce/applications/coforge-terminal.desktop /usr/share/applications/c
 COPY config/xfce/applications/coforge-thunar.desktop /usr/share/applications/coforge-thunar.desktop
 COPY config/gtk-3.0/gtk.css /etc/xdg/gtk-3.0/gtk.css
 COPY config/chromium/policies/managed/coforge.json /etc/chromium/policies/managed/coforge.json
+COPY config/chromium/policies/managed/lenovo-intranet.json.template /usr/local/share/coforge/lenovo-intranet.json.template
+COPY config/profile.d/corp-proxy.sh /usr/local/share/coforge/corp-proxy.sh
+COPY config/certs/lenovo-sha2-root.crt /usr/local/share/ca-certificates/lenovo-sha2-root.crt
+COPY config/certs/lenovo-sha2-subca1.crt /usr/local/share/ca-certificates/lenovo-sha2-subca1.crt
+COPY scripts/render-lenovo-proxy.sh /usr/local/bin/render-lenovo-proxy.sh
+RUN update-ca-certificates \
+  && chmod 755 /usr/local/bin/render-lenovo-proxy.sh \
+  && chmod 644 /usr/local/share/coforge/lenovo-intranet.json.template \
+      /usr/local/share/coforge/corp-proxy.sh \
+      /usr/local/share/ca-certificates/lenovo-sha2-root.crt \
+      /usr/local/share/ca-certificates/lenovo-sha2-subca1.crt \
+  && openssl x509 -in /usr/local/share/ca-certificates/lenovo-sha2-root.crt -noout -subject \
+    | grep -q 'SHA2ROOTCA' \
+  && openssl x509 -in /usr/local/share/ca-certificates/lenovo-sha2-subca1.crt -noout -subject \
+    | grep -q 'lenovoSHA2SUBCA1'
 RUN mkdir -p /usr/local/lib/coforge /usr/local/share/coforge \
   && if [ -n "${COMPUTER_VERSION}" ]; then printf '%s\n' "${COMPUTER_VERSION}" > /usr/local/share/coforge/computer-version; fi \
   && chmod 755 /usr/local/bin/persist-user-data.sh \

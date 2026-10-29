@@ -127,11 +127,18 @@ If sandboxes use an HTTP proxy and Cursor auth fails, ensure those hosts are in
 `NO_PROXY` (configure-cursor-runtime.sh adds common Cursor API hosts automatically
 when a proxy is present).
 
+## Lenovo intranet
+
+The image trusts Lenovo SHA2 root/sub CAs under `config/certs/`. At start,
+`render-lenovo-proxy.sh` writes Chromium proxy policy from `SANDBOX_PROXY_URL` /
+`LENOVO_PROXY` (or a probed host `:7893`). Users open intranet sites in Chromium
+and sign in with their own username/password — never bake credentials into the image.
+
 ## Host proxy for sandbox egress
 
 The host currently exposes a sing-box mixed proxy on `:7893`. To make a sandbox
 use that proxy, inject proxy envs and make sure the template allows egress to the
-host LAN IP.
+host LAN IP. `create-cube-template.sh` defaults `ENABLE_SANDBOX_HOST_PROXY=1`.
 
 For local Docker runs:
 

@@ -39,7 +39,8 @@ HOST_IP="${ENV_HOST_IP:-${HOST_IP:-$(hostname -I 2>/dev/null | awk '{print $1}')
 CUBE_DEV_GATEWAY="${ENV_CUBE_DEV_GATEWAY:-${CUBE_DEV_GATEWAY:-192.168.0.1}}"
 ALLOW_OUT_CIDRS="${ENV_ALLOW_OUT_CIDRS:-${ALLOW_OUT_CIDRS:-${CUBE_DEV_GATEWAY}/32 ${HOST_IP}/32}}"
 HOST_PROXY_PORT="${ENV_HOST_PROXY_PORT:-${HOST_PROXY_PORT:-7893}}"
-ENABLE_SANDBOX_HOST_PROXY="${ENV_ENABLE_SANDBOX_HOST_PROXY:-${ENABLE_SANDBOX_HOST_PROXY:-0}}"
+# Default on: Lenovo intranet / host sing-box egress for new templates.
+ENABLE_SANDBOX_HOST_PROXY="${ENV_ENABLE_SANDBOX_HOST_PROXY:-${ENABLE_SANDBOX_HOST_PROXY:-1}}"
 SANDBOX_PROXY_URL="${ENV_SANDBOX_PROXY_URL:-${SANDBOX_PROXY_URL:-}}"
 SANDBOX_NO_PROXY="${ENV_SANDBOX_NO_PROXY:-${SANDBOX_NO_PROXY:-localhost,127.0.0.1,::1,${HOST_IP},${CUBE_DEV_GATEWAY},10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc,.cluster.local}}"
 LENOVO_MODELFACTORY_HOST="${LENOVO_MODELFACTORY_HOST:-modelfactory.lenovo.com}"
@@ -79,6 +80,12 @@ test -x /usr/local/bin/persist-user-data.sh
 grep -q 'persist_workspace' /usr/local/bin/persist-user-data.sh
 grep -q 'ensure_venv' /usr/local/bin/persist-user-data.sh
 python3 -c 'import venv'
+test -x /usr/local/bin/render-lenovo-proxy.sh
+test -f /usr/local/share/coforge/lenovo-intranet.json.template
+test -f /usr/local/share/ca-certificates/lenovo-sha2-root.crt
+test -f /usr/local/share/ca-certificates/lenovo-sha2-subca1.crt
+openssl x509 -in /usr/local/share/ca-certificates/lenovo-sha2-root.crt -noout -subject | grep -q 'SHA2ROOTCA'
+openssl x509 -in /usr/local/share/ca-certificates/lenovo-sha2-subca1.crt -noout -subject | grep -q 'lenovoSHA2SUBCA1'
 test -f /usr/local/share/coforge/desktop-logo.png
 test -f /root/.pi/agent/models.json
 test -f /root/.pi/agent/settings.json

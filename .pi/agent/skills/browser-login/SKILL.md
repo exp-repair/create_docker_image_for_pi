@@ -27,6 +27,12 @@ mkdir -p /workspace/browser-shots
 `pip` / `python3` 应来自 `/root/.coforge/venv`（换镜像可保留）。**不要**用 `PIP_BREAK_SYSTEM_PACKAGES=1 pip3 install` 装进系统盘。  
 **不要** `pip install … | tail`（大包输出可能看起来像卡住）；直连默认 pypi.org 在本网常会挂死，用上面的阿里云源。
 
+## 联想内网站点
+
+- 连通：镜像已装联想 CA；代理由启动脚本渲染（查看 `/etc/chromium/policies/managed/lenovo-intranet.json` 与 `echo $HTTPS_PROXY`）。
+- 登录：用 `coforge-chromium` 打开目标页（如 `https://home.lenovo.com`），**向用户要域账号/密码或验证码**，在页面上填写。不要把密码写进镜像或世界可读文件。
+- 若页打不开：先 `curl -sI -o /dev/null -w '%{http_code}\n' --connect-timeout 5 https://home.lenovo.com/`，并确认 `HTTPS_PROXY` / 策略里的 ProxyServer 非空。
+
 - **`DISPLAY` 必须已由任务注入**。若 unset：停止 GUI 浏览器操作并说明原因；**禁止**回退到 `:0`。
 - CDP 基址：`endpoint="$(coforge-cdp-endpoint)"`（失败则先启动 `coforge-chromium`）。
 

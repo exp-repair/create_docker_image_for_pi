@@ -31,6 +31,18 @@ fi
 
 cd /workspace 2>/dev/null || cd / || true
 
+# Corporate / Lenovo intranet: trust is baked (CA); proxy address is runtime.
+if [[ -x /usr/local/bin/render-lenovo-proxy.sh ]]; then
+  /usr/local/bin/render-lenovo-proxy.sh || echo "[entrypoint] render-lenovo-proxy.sh failed" >&2
+  if [[ -f /etc/coforge/corp-proxy.env ]]; then
+    # shellcheck disable=SC1091
+    set -a
+    # shellcheck disable=SC1091
+    . /etc/coforge/corp-proxy.env
+    set +a
+  fi
+fi
+
 # The shared desktop stays down until a VNC or browser client connects.
 # Each Agent's screen is started by vnc-websocket on demand, and held through
 # 127.0.0.1:6091 while that Agent is running.
