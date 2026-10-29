@@ -70,8 +70,13 @@ class AgentScreenTest(unittest.TestCase):
         self.assertNotEqual(first["configHome"], other["configHome"])
         self.assertTrue(first["configHome"].endswith("/agent-1/config"))
         self.assertEqual(first["dbus"], "unix:path=/tmp/agent-bus")
+        self.assertEqual(len(first["cdpToken"]), 32)
+        self.assertIn(first["cdpToken"], first["cdpEndpoint"])
+        self.assertEqual(first["cdpPort"], 9222 + int(first["display"].lstrip(":")))
         with open(launched[0]["xstartup"], encoding="utf-8") as handle:
-            self.assertIn("export DISPLAY=", handle.read())
+            text = handle.read()
+            self.assertIn("export DISPLAY=", text)
+            self.assertIn("export COFORGE_CDP_TOKEN=", text)
 
         port = screens.open_viewer("agent-1")
         self.assertEqual(port, launched[0]["port"])

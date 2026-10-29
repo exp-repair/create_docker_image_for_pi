@@ -11,36 +11,42 @@ description: Map CoForge/Cube cloud-computer resources (shell, /workspace, Chrom
 
 ```bash
 echo "DISPLAY=$DISPLAY USER=$(id -un) PWD=$PWD"
-command -v chromium coforge-chromium python3 node npm rg fd pi
-python3 -c "from playwright.sync_api import sync_playwright; print('playwright ok')"
+command -v chromium coforge-chromium coforge-cdp-endpoint python3 node npm rg fd pi
+python3 -c "import playwright; print('playwright ok')" 2>/dev/null || echo "playwright not installed"
 ls -la /workspace /workspace/uploads /workspace/browser-shots 2>/dev/null || true
-ss -ltn 2>/dev/null | grep -E ':(5901|6080|9222|9223|49999)\b' || netstat -ltn 2>/dev/null | grep -E ':(5901|6080|9222|9223)\b' || true
+[ -n "${DISPLAY:-}" ] && coforge-cdp-endpoint || echo "DISPLAY unset"
 ```
 
 ## 资源一览
 
 | 资源 | 位置 / 端口 | 用途 |
 |---|---|---|
-| 工作区 | `/workspace` | 代码与任务文件 |
+| 工作区 | `/workspace` → 卷 `/root/.coforge/workspace` | 代码与任务文件；换镜像保留 |
 | 上传 | `/workspace/uploads` | 用户上传 |
 | 截图 | `/workspace/browser-shots` | 浏览器/桌面截图落盘 |
-| 显示 | `DISPLAY`（常见 `:0`） | X11 桌面 |
-| Chromium | `chromium` / `coforge-chromium` | GUI 浏览；CDP 端口 = `9222 + 显示号`（`:0`→9222，`:1`→9223） |
-| VNC | `:5901` | 原生 VNC |
-| noVNC | `:6080` | 浏览器看桌面 |
-| Playwright | 镜像已预装 `playwright` Python 包 | 连系统 Chromium / CDP；勿再 `pip install` 或 `playwright install` |
-| 填表辅助 | `/usr/local/bin/page-fill.py` | 经 CDP 向已打开页面填字段（多为桌面服务调用） |
+| Python venv | `/root/.coforge/venv` | 运行时 `pip install` 装这里；换镜像保留 |
+| 显示 | 任务注入的 `DISPLAY`（每 agent 一路，常为 `:20+`；**不是**默认 `:0`） | X11 桌面 |
+| Chromium | `coforge-chromium`（`chromium` 为其包装） | GUI；CDP 经 token 门控 |
+| 本路 CDP | `coforge-cdp-endpoint` | 打印可连接的基址 URL |
+| Playwright | 不预装；`pip install` 进 venv | `connect_over_cdp(coforge-cdp-endpoint 输出)`；勿 `playwright install`、勿装进系统盘 |
+| 填表辅助 | `/usr/local/bin/page-fill.py` | 经 token 化 CDP 填字段 |
+
+## 隔离提醒（防串台）
+
+- 公共口 `9222+显示号` **必须**带 `/coforge-cdp/<token>/`；裸连返回 403。
+- **禁止**扫描并附着任意调试口；**禁止** `DISPLAY=:0` 回退。
+- 无 `DISPLAY` → 不要开 GUI 浏览器。
 
 ## 选型指引
 
-1. **命令行能完成**（文件、包、API、git）→ 直接 shell。
-2. **需要登录/注册/点网页** → 读并遵循 `browser-login` skill；默认用 Chromium 或 Playwright，不要推回用户。
-3. **需要确认页面长什么样** → 截图到 `/workspace/browser-shots`，或提醒用户开 noVNC `:6080`。
-4. **不确定** → 先自检 + `rg`/`ls` 找镜像内脚本与文档，再选路径；探测失败才说明限制。
+1. **命令行能完成** → 直接 shell。
+2. **需要登录/注册/点网页** → 遵循 `browser-login`。
+3. **需要确认页面** → 截图到 `/workspace/browser-shots`。
+4. **不确定** → 先自检再选路径。
 
 ## 探索顺序（新任务）
 
 1. 读任务相关本地文档 / README。
 2. `rg` 仓库与 `/usr/local` 是否已有脚本。
-3. 跑上面的自检，确认桌面与浏览器是否可用。
-4. 选最小可行路径执行；卡住再问用户要凭证或决策。
+3. 跑上面的自检，确认**自己的**桌面与 CDP。
+4. 选最小可行路径执行。

@@ -9,13 +9,13 @@ keeps it up too. With neither, the display stops after a short idle.
 import json
 import os
 import re
+import secrets
 import shlex
 import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
-
 AGENT_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 SCREEN_PATH = re.compile(r"^/screen/([A-Za-z0-9_-]+)(?:/(.*))?$")
 DISPLAY_BASE = 20
@@ -167,10 +167,27 @@ class AgentScreens:
             if event is not None:
                 event.set()
 
+    def _cdp_token(self, directory: str) -> str:
+        path = os.path.join(directory, "cdp.token")
+        try:
+            with open(path, encoding="utf-8") as handle:
+                value = handle.read().strip()
+            if re.fullmatch(r"[0-9a-f]{32}", value):
+                return value
+        except OSError:
+            pass
+        value = secrets.token_hex(16)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(value + "\n")
+        os.chmod(path, 0o600)
+        return value
+
     def _spec(self, screen: dict) -> dict:
         directory = screen["directory"]
+        token = self._cdp_token(directory)
         env = {
             "COFORGE_SCREEN_DIR": directory,
+            "COFORGE_CDP_TOKEN": token,
             "DISPLAY": f":{screen['number']}",
             "XAUTHORITY": os.path.join(directory, "Xauthority"),
             "XDG_CONFIG_HOME": os.path.join(directory, "config"),
@@ -186,6 +203,16 @@ class AgentScreens:
         with open(wrapper, "w", encoding="utf-8") as handle:
             handle.write("\n".join(lines) + "\n")
         os.chmod(wrapper, 0o755)
+        # Keep Chromium profile token in sync when HOME is shared.
+        home = os.environ.get("HOME", "/root")
+        profile = os.path.join(
+            home, ".config", "coforge-chromium", str(screen["number"])
+        )
+        os.makedirs(profile, mode=0o700, exist_ok=True)
+        profile_token = os.path.join(profile, "cdp.token")
+        with open(profile_token, "w", encoding="utf-8") as handle:
+            handle.write(token + "\n")
+        os.chmod(profile_token, 0o600)
         return {
             "display": env["DISPLAY"],
             "port": screen["port"],
@@ -197,16 +224,24 @@ class AgentScreens:
     def _describe(self, screen: dict) -> dict:
         env = self._spec(screen)["env"]
         bus_path = os.path.join(screen["directory"], "bus")
+        display = env["DISPLAY"]
+        number = screen["number"]
         return {
-            "display": env["DISPLAY"],
+            "display": display,
             "xauthority": env["XAUTHORITY"],
             "configHome": env["XDG_CONFIG_HOME"],
             "dataHome": env["XDG_DATA_HOME"],
             "cacheHome": env["XDG_CACHE_HOME"],
             "runtimeDir": env["XDG_RUNTIME_DIR"],
             "dbus": self._read_bus(bus_path),
+            # Optional for Computer binaries that forward unknown hold fields:
+            "cdpToken": env["COFORGE_CDP_TOKEN"],
+            "cdpPort": 9222 + number,
+            "cdpEndpoint": (
+                f"http://127.0.0.1:{9222 + number}/coforge-cdp/"
+                f"{env['COFORGE_CDP_TOKEN']}/"
+            ),
         }
-
     def _read_bus(self, path: str) -> str:
         deadline = time.time() + self.bus_timeout
         while True:

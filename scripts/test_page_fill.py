@@ -3,6 +3,8 @@
 import os
 import unittest
 from importlib.machinery import SourceFileLoader
+from pathlib import Path
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 page_fill = SourceFileLoader("page_fill", os.path.join(HERE, "page-fill.py")).load_module()
@@ -35,12 +37,62 @@ class FakeSession:
 
 
 SECRET = "s3cret-value"
+TOKEN = "a" * 32
 
 
 class PageFillTest(unittest.TestCase):
     def test_display_port_matches_chromium(self):
         self.assertEqual(page_fill.cdp_port(":1"), 9223)
         self.assertEqual(page_fill.cdp_port(":20"), 9242)
+
+    def test_cdp_base_url_requires_token_file(self):
+        with tempfile.TemporaryDirectory() as home:
+            self.assertIsNone(page_fill.cdp_base_url(":29", home=home))
+            profile = Path(home) / ".config" / "coforge-chromium" / "29"
+            profile.mkdir(parents=True)
+            (profile / "cdp.token").write_text(TOKEN + "\n", encoding="utf-8")
+            self.assertEqual(
+                page_fill.cdp_base_url(":29", home=home),
+                f"http://127.0.0.1:9251/coforge-cdp/{TOKEN}/",
+            )
+
+    def test_fill_uses_tokenized_base_url(self):
+        seen = []
+
+        def list_pages(base):
+            seen.append(base)
+            return [
+                {
+                    "type": "page",
+                    "webSocketDebuggerUrl": f"ws://127.0.0.1:9251/coforge-cdp/{TOKEN}/devtools/page/1",
+                }
+            ]
+
+        class Session:
+            def call(self, method, params=None):
+                if method == "Runtime.enable":
+                    return {}
+                if method == "Runtime.evaluate":
+                    return {"result": {"value": "ok"}}
+                return {}
+
+            def close(self):
+                return None
+
+        with tempfile.TemporaryDirectory() as home:
+            profile = Path(home) / ".config" / "coforge-chromium" / "29"
+            profile.mkdir(parents=True)
+            (profile / "cdp.token").write_text(TOKEN + "\n", encoding="utf-8")
+            fields = [{"id": "phone", "selector": "input", "input": "text", "value": "186"}]
+            filled = page_fill.fill_display(
+                ":29",
+                fields,
+                list_pages_fn=list_pages,
+                connect=lambda _url: Session(),
+                home=home,
+            )
+            self.assertEqual(filled, {"filled": ["phone"]})
+            self.assertEqual(seen, [f"http://127.0.0.1:9251/coforge-cdp/{TOKEN}/"])
 
     def test_inserts_text_and_forgets_it(self):
         session = FakeSession()
@@ -96,7 +148,7 @@ class PageFillTest(unittest.TestCase):
             page_fill.fill_display(
                 ":20",
                 [{"id": "password", "selector": "#pass", "input": "password", "value": SECRET}],
-                list_pages_fn=lambda _port: [],
+                list_pages_fn=lambda _base: [],
             )
         self.assertEqual(caught.exception.code, "browser_not_open")
         self.assertNotIn(SECRET, str(caught.exception))

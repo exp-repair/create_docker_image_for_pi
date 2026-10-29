@@ -1,5 +1,4 @@
-# Baked into the cloud-computer image (see Dockerfile). System Chromium via CDP /
-# executable_path="/usr/bin/chromium"; do not run `playwright install chromium`.
-playwright==1.54.0
+# Baked into the cloud-computer image (see Dockerfile). Keep this list light —
+# do not add playwright here (slow image builds); install at runtime if needed.
 pypdf>=6.0.0
 python-pptx>=1.0.0

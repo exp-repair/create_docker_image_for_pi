@@ -19,16 +19,12 @@ ARG NPM_REGISTRY=
 # Debian apt mirror (empty = keep image default sources). China default: Tencent.
 ARG APT_MIRROR=https://mirrors.cloud.tencent.com/debian
 ARG APT_SECURITY_MIRROR=https://mirrors.cloud.tencent.com/debian-security
-# PyPI mirror for baking playwright (and friends) from requirements.txt.
-ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
-ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
 ARG COMPUTER_VERSION=
 
 USER root
 
 ENV HOME=/root \
     PYTHONUNBUFFERED=1 \
-    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
     PI_WEB_HOST=0.0.0.0 \
     PI_WEB_PORT=6079 \
     PI_WEB_WORKSPACE=/workspace \
@@ -93,6 +89,7 @@ RUN set -eux; \
     xfce4-terminal \
     python3-gi \
     python3-pip \
+    python3-venv \
     gir1.2-gtk-3.0 \
     chromium \
   && mkdir -p /etc/apt/keyrings \
@@ -112,10 +109,23 @@ RUN set -eux; \
      done \
   && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Python packages for the cloud computer (Playwright talks to system Chromium;
-# do not run `playwright install chromium`).
+# Lightweight system packages only (no Playwright — it balloons image build time).
+# Runtime pip goes into /root/.coforge/venv (see persist-user-data.sh).
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    PIP_INDEX_URL=${PIP_INDEX_URL} \
+    PIP_TRUSTED_HOST=${PIP_TRUSTED_HOST}
 COPY requirements.txt /tmp/requirements.txt
 RUN set -eux; \
+  printf '%s\n' \
+    '[global]' \
+    "index-url = ${PIP_INDEX_URL}" \
+    "trusted-host = ${PIP_TRUSTED_HOST}" \
+    'timeout = 60' \
+    > /etc/pip.conf; \
+  mkdir -p /root/.config/pip; \
+  cp /etc/pip.conf /root/.config/pip/pip.conf; \
   pip_args="--no-cache-dir --break-system-packages"; \
   if [ -n "${PIP_INDEX_URL}" ]; then \
     pip_args="${pip_args} -i ${PIP_INDEX_URL}"; \
@@ -125,7 +135,6 @@ RUN set -eux; \
   fi; \
   # shellcheck disable=SC2086
   pip3 install ${pip_args} -r /tmp/requirements.txt; \
-  python3 -c 'from playwright.sync_api import sync_playwright; print("playwright import ok")'; \
   rm -f /tmp/requirements.txt
 
 COPY lenovo-modelfactory-ca.pem /root/.pi/agent/certs/lenovo-modelfactory-ca.pem
@@ -262,7 +271,9 @@ COPY scripts/vnc-xstartup /usr/local/share/coforge/vnc-xstartup
 COPY scripts/vnc-agent-xstartup /usr/local/share/coforge/vnc-agent-xstartup
 COPY scripts/vnc-agent-screen.py /usr/local/bin/vnc-agent-screen.py
 COPY scripts/vnc-desktop.html /usr/local/share/coforge/vnc-desktop.html
-COPY scripts/coforge-chromium.sh /usr/local/bin/coforge-chromium
+COPY scripts/coforge_cdp.py /usr/local/lib/coforge/coforge_cdp.py
+COPY scripts/coforge-chromium.py /usr/local/bin/coforge-chromium
+COPY scripts/coforge-cdp-endpoint /usr/local/bin/coforge-cdp-endpoint
 COPY scripts/coforge_x11.py /usr/local/lib/coforge/coforge_x11.py
 COPY scripts/coforge-launcher-focus.py /usr/local/bin/coforge-launcher-focus
 COPY scripts/coforge-dock-ui.py /usr/local/bin/coforge-dock-ui
@@ -293,6 +304,8 @@ RUN mkdir -p /usr/local/lib/coforge /usr/local/share/coforge \
       /usr/local/bin/page-fill.py \
       /usr/local/bin/vnc-agent-screen.py \
       /usr/local/bin/coforge-chromium \
+      /usr/local/bin/coforge-cdp-endpoint \
+      /usr/local/lib/coforge/coforge_cdp.py \
       /usr/local/bin/coforge-launcher-focus \
       /usr/local/bin/coforge-dock-ui \
       /usr/local/bin/coforge-thunar \
@@ -329,9 +342,15 @@ RUN mkdir -p /usr/local/lib/coforge /usr/local/share/coforge \
   && grep -q 'coforge-dock-ui' /usr/local/share/coforge/vnc-agent-xstartup \
   && grep -q '.coforge-dock' /etc/xdg/gtk-3.0/gtk.css \
   && grep -q -- '--start-maximized' /usr/local/bin/coforge-chromium \
+  && grep -q 'coforge-cdp' /usr/local/bin/coforge-chromium \
+  && test -x /usr/local/bin/coforge-cdp-endpoint \
+  && test -f /usr/local/lib/coforge/coforge_cdp.py \
   && test -x /usr/local/bin/coforge-terminal \
   && test -x /usr/local/bin/coforge-maximize-chromium \
   && test -x /usr/local/bin/persist-user-data.sh \
+  && grep -q 'persist_workspace' /usr/local/bin/persist-user-data.sh \
+  && grep -q 'ensure_venv' /usr/local/bin/persist-user-data.sh \
+  && python3 -c 'import venv' \
   && test -x /usr/local/bin/select-computer-binary.sh \
   && test -x /usr/local/bin/activate-computer-release.sh \
   && test -x /usr/local/bin/supervise-computer-runtime.sh \

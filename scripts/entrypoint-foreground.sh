@@ -10,12 +10,26 @@ if [[ -n "${host}" && -n "${ip}" && -w /etc/hosts ]] && ! grep -Eq "(^|[[:space:
   printf '%s %s\n' "${ip}" "${host}" >> /etc/hosts
 fi
 
+# Image WORKDIR is /workspace. Leave it before persist may replace that path,
+# otherwise this process (and every child) hits getcwd() failures.
+cd / || true
+
 if [[ -x /usr/local/bin/persist-user-data.sh ]]; then
   /usr/local/bin/persist-user-data.sh || echo "[entrypoint] persist-user-data.sh failed" >&2
+  # Agent tool shells inherit this process env; keep venv pip/python first.
+  if [[ -x /root/.coforge/venv/bin/python ]]; then
+    export VIRTUAL_ENV=/root/.coforge/venv
+    export PATH="/root/.coforge/venv/bin:${PATH}"
+  fi
+  export PIP_INDEX_URL="${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
+  export PIP_TRUSTED_HOST="${PIP_TRUSTED_HOST:-mirrors.aliyun.com}"
+  export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD="${PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD:-1}"
   if ! mountpoint -q /opt 2>/dev/null; then
     /usr/local/bin/persist-user-data.sh --watch >/tmp/persist-user-data-watch.log 2>&1 &
   fi
 fi
+
+cd /workspace 2>/dev/null || cd / || true
 
 # The shared desktop stays down until a VNC or browser client connects.
 # Each Agent's screen is started by vnc-websocket on demand, and held through
