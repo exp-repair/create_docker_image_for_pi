@@ -30,11 +30,40 @@ Cube template/sandbox, and configuring Pi + Cursor Agent + Multica at runtime.
 | `cont-init-browser.sh` | Starts `/entrypoint-vnc.sh` and `/entrypoint-pi-web.sh` under root. |
 | `entrypoint-vnc.sh` | Starts Xvfb, openbox, Chromium with CDP `:9223`, x11vnc, and noVNC. |
 | `entrypoint-pi-web.sh` | Starts the Pi web bridge backed by `pi --mode rpc`, including WebTTY at `/term`. |
-| `configure-pi-runtime.sh` | Writes Pi `models.json` / `settings.json`, including areal and optional Lenovo ModelFactory DeepSeek. |
+| `configure-pi-runtime.sh` | Writes Pi `models.json` / `settings.json`, including areal and optional Lenovo ModelFactory DeepSeek. Delegates skills install to `sync-pi-skills.sh` (does not overwrite user skills). |
+| `sync-pi-skills.sh` | Persists Pi skills under `$WORKSPACE/skills` and copies them into `$PI_AGENT_DIR/skills` on start (flock + content hash + atomic replace). Image skills from `/usr/local/share/coforge/pi-skills` fill gaps only. |
+| `test_sync_pi_skills.sh` | Host-side smoke test for `sync-pi-skills.sh` (restart / delete / softlink replace / promote). |
 | `configure-cursor-runtime.sh` | Resolves `cursor-agent`, writes `/root/.cursor/runtime.env` from `CURSOR_API_KEY` / `MULTICA_CURSOR_*`. |
 | `configure-multica-runtime.sh` | Writes Multica CLI/daemon config from runtime `MULTICA_*` values. |
 | `entrypoint-multica-daemon.sh` | Configures Pi/Cursor/Multica and runs `multica daemon supervise` (Machine Upgrade handoff-safe), with an outer bash restart loop. |
 | `start-multica-runtime.sh` | Reconfigures Pi/Cursor/Multica inside a running sandbox and starts the supervised daemon in the background. |
+
+## Pi skills persistence (cloud computer)
+
+`COFORGE_CLOUD_COMPUTER=1` is set in the image/entrypoint so CoForge enables
+persistent skill roots. Non-cloud hosts must leave that variable unset.
+
+| Kind | Durable path |
+| --- | --- |
+| Container shared | `/workspace/skills/<name>/` |
+| Per Agent | `/workspace/agent-skills/<agentId>/<name>/` |
+
+`entrypoint-foreground.sh` runs `sync-pi-skills.sh` (seed + copy) then
+`bind-pi-skills.sh` (`mount --bind /workspace/skills` → `/root/.pi/agent/skills`)
+so new container-level skills are written straight onto the volume.
+
+```bash
+# Host smoke test
+./scripts/test_sync_pi_skills.sh
+
+# In a running container
+echo '---\nname: hello\ndescription: x\n---\n' >/workspace/skills/hello/SKILL.md
+# with bind active this is the same inode:
+test -f /root/.pi/agent/skills/hello/SKILL.md
+```
+
+Rollback: unset/remove `COFORGE_CLOUD_COMPUTER`, drop sync/bind hooks from the
+entrypoint, and revert CoForge cloud-gated path changes.
 
 ## Key environment variables
 

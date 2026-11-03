@@ -137,15 +137,20 @@ if [[ -f "${APPEND_SYSTEM_TEMPLATE}" ]]; then
 elif [[ ! -f "${APPEND_SYSTEM_FILE}" ]]; then
   log "WARN: APPEND_SYSTEM template missing at ${APPEND_SYSTEM_TEMPLATE}"
 fi
-if [[ -d "${SKILLS_TEMPLATE}" ]]; then
+# Skills are owned by sync-pi-skills.sh (workspace SoT + image fallback).
+# Do not rm -rf + cp official skills here — that wipes user overrides.
+if command -v sync-pi-skills.sh >/dev/null 2>&1; then
+  sync-pi-skills.sh || log "WARN: sync-pi-skills.sh failed"
+elif [[ -x /usr/local/bin/sync-pi-skills.sh ]]; then
+  /usr/local/bin/sync-pi-skills.sh || log "WARN: sync-pi-skills.sh failed"
+elif [[ -d "${SKILLS_TEMPLATE}" ]]; then
   mkdir -p "${SKILLS_DIR}"
   for skill_name in cloud-computer-overview browser-login; do
-    if [[ -d "${SKILLS_TEMPLATE}/${skill_name}" ]]; then
-      rm -rf "${SKILLS_DIR}/${skill_name}"
+    if [[ -d "${SKILLS_TEMPLATE}/${skill_name}" && ! -d "${SKILLS_DIR}/${skill_name}" ]]; then
       cp -a "${SKILLS_TEMPLATE}/${skill_name}" "${SKILLS_DIR}/${skill_name}"
     fi
   done
-  log "installed Pi skills from ${SKILLS_TEMPLATE}"
+  log "seeded missing Pi skills from ${SKILLS_TEMPLATE} (no overwrite)"
 elif [[ ! -d "${SKILLS_DIR}/cloud-computer-overview" ]]; then
   log "WARN: Pi skills template missing at ${SKILLS_TEMPLATE}"
 fi

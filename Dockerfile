@@ -25,6 +25,7 @@ USER root
 
 ENV HOME=/root \
     PYTHONUNBUFFERED=1 \
+    COFORGE_CLOUD_COMPUTER=1 \
     PI_WEB_HOST=0.0.0.0 \
     PI_WEB_PORT=6079 \
     PI_WEB_WORKSPACE=/workspace \
@@ -259,6 +260,8 @@ RUN if [ "${INSTALL_PI}" != "1" ]; then \
     fi
 
 COPY scripts/persist-user-data.sh /usr/local/bin/persist-user-data.sh
+COPY scripts/sync-pi-skills.sh /usr/local/bin/sync-pi-skills.sh
+COPY scripts/bind-pi-skills.sh /usr/local/bin/bind-pi-skills.sh
 COPY scripts/select-computer-binary.sh /usr/local/bin/select-computer-binary.sh
 COPY scripts/activate-computer-release.sh /usr/local/bin/activate-computer-release.sh
 COPY scripts/supervise-computer-runtime.sh /usr/local/bin/supervise-computer-runtime.sh
@@ -309,6 +312,8 @@ RUN update-ca-certificates \
 RUN mkdir -p /usr/local/lib/coforge /usr/local/share/coforge \
   && if [ -n "${COMPUTER_VERSION}" ]; then printf '%s\n' "${COMPUTER_VERSION}" > /usr/local/share/coforge/computer-version; fi \
   && chmod 755 /usr/local/bin/persist-user-data.sh \
+      /usr/local/bin/sync-pi-skills.sh \
+      /usr/local/bin/bind-pi-skills.sh \
       /usr/local/bin/select-computer-binary.sh \
       /usr/local/bin/activate-computer-release.sh \
       /usr/local/bin/supervise-computer-runtime.sh \
@@ -363,6 +368,11 @@ RUN mkdir -p /usr/local/lib/coforge /usr/local/share/coforge \
   && test -x /usr/local/bin/coforge-terminal \
   && test -x /usr/local/bin/coforge-maximize-chromium \
   && test -x /usr/local/bin/persist-user-data.sh \
+  && test -x /usr/local/bin/sync-pi-skills.sh \
+  && test -x /usr/local/bin/bind-pi-skills.sh \
+  && grep -q 'sync-pi-skills.sh' /usr/local/bin/entrypoint-foreground.sh \
+  && grep -q 'bind-pi-skills.sh' /usr/local/bin/entrypoint-foreground.sh \
+  && grep -q 'COFORGE_CLOUD_COMPUTER' /usr/local/bin/entrypoint-foreground.sh \
   && grep -q 'persist_workspace' /usr/local/bin/persist-user-data.sh \
   && grep -q 'ensure_venv' /usr/local/bin/persist-user-data.sh \
   && python3 -c 'import venv' \

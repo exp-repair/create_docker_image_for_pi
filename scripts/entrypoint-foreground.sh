@@ -29,6 +29,18 @@ if [[ -x /usr/local/bin/persist-user-data.sh ]]; then
   fi
 fi
 
+# Cloud-computer marker for CoForge (must stay unset on non-cloud hosts).
+export COFORGE_CLOUD_COMPUTER="${COFORGE_CLOUD_COMPUTER:-1}"
+
+# After /workspace is durable: seed/sync Pi skills, then bind-mount so newly
+# created container-level skills land on the persistent volume automatically.
+if [[ -x /usr/local/bin/sync-pi-skills.sh ]]; then
+  /usr/local/bin/sync-pi-skills.sh || echo "[entrypoint] sync-pi-skills.sh failed" >&2
+fi
+if [[ -x /usr/local/bin/bind-pi-skills.sh ]]; then
+  /usr/local/bin/bind-pi-skills.sh || echo "[entrypoint] bind-pi-skills.sh failed" >&2
+fi
+
 cd /workspace 2>/dev/null || cd / || true
 
 # Corporate / Lenovo intranet: trust is baked (CA); proxy address is runtime.

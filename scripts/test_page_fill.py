@@ -153,6 +153,81 @@ class PageFillTest(unittest.TestCase):
         self.assertEqual(caught.exception.code, "browser_not_open")
         self.assertNotIn(SECRET, str(caught.exception))
 
+    def test_label_only_password_field_is_accepted(self):
+        clean = page_fill.validate_fields(
+            [{"id": "password", "label": "Password", "input": "password", "value": SECRET}]
+        )
+        self.assertEqual(clean[0]["selector"], "")
+        self.assertEqual(clean[0]["label"], "Password")
+
+    def test_text_field_without_selector_or_label_is_rejected(self):
+        with self.assertRaises(page_fill.FillError) as caught:
+            page_fill.validate_fields(
+                [{"id": "username", "input": "text", "value": "ada"}]
+            )
+        self.assertEqual(caught.exception.code, "bad_request")
+
+    def test_fill_resolves_by_label_without_selector(self):
+        session = FakeSession()
+
+        def call(method, params=None):
+            session.calls.append((method, params))
+            if method == "Runtime.enable":
+                return {}
+            if method == "Runtime.evaluate":
+                expression = (params or {}).get("expression", "")
+                self.assertIn('"label": "Password"', expression)
+                self.assertIn('"selector": ""', expression)
+                return {"result": {"value": "ok"}}
+            raise AssertionError(method)
+
+        session.call = call
+        fields = [
+            {
+                "id": "password",
+                "label": "Password",
+                "selector": "",
+                "input": "password",
+                "value": SECRET,
+            }
+        ]
+        self.assertEqual(page_fill.fill_with(session, fields), ["password"])
+        self.assertEqual(fields[0]["value"], "")
+
+    def test_inspect_returns_field_names_only(self):
+        session = FakeSession()
+
+        def call(method, params=None):
+            if method == "Runtime.enable":
+                return {}
+            if method == "Runtime.evaluate":
+                return {
+                    "result": {
+                        "value": [
+                            {
+                                "id": "password",
+                                "label": "Password",
+                                "input": "password",
+                                "selector": "input[type=password]",
+                            }
+                        ]
+                    }
+                }
+            raise AssertionError(method)
+
+        session.call = call
+        self.assertEqual(
+            page_fill.inspect_with(session),
+            [
+                {
+                    "id": "password",
+                    "label": "Password",
+                    "input": "password",
+                    "selector": "input[type=password]",
+                }
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

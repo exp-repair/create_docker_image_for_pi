@@ -40,6 +40,7 @@ fi
 
 SKILLS_TEMPLATE="${PI_SKILLS_TEMPLATE:-/usr/local/share/coforge/pi-skills}"
 SKILLS_DIR="${AGENT_DIR}/skills"
+# Build-time seed only. Runtime persistence is sync-pi-skills.sh (/workspace/skills).
 if [[ -d "${SKILLS_TEMPLATE}" ]]; then
   mkdir -p "${SKILLS_DIR}"
   for skill_name in cloud-computer-overview browser-login; do

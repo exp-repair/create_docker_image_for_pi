@@ -77,6 +77,11 @@ test -x /usr/local/bin/coforge-chromium
 test -x /usr/local/bin/coforge-cdp-endpoint
 test -f /usr/local/lib/coforge/coforge_cdp.py
 test -x /usr/local/bin/persist-user-data.sh
+test -x /usr/local/bin/sync-pi-skills.sh
+test -x /usr/local/bin/bind-pi-skills.sh
+grep -q 'sync-pi-skills.sh' /usr/local/bin/entrypoint-foreground.sh
+grep -q 'bind-pi-skills.sh' /usr/local/bin/entrypoint-foreground.sh
+grep -q 'COFORGE_CLOUD_COMPUTER' /usr/local/bin/entrypoint-foreground.sh
 grep -q 'persist_workspace' /usr/local/bin/persist-user-data.sh
 grep -q 'ensure_venv' /usr/local/bin/persist-user-data.sh
 python3 -c 'import venv'

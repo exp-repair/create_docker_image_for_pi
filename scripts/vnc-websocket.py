@@ -518,6 +518,23 @@ def handle_fill(conn: socket.socket, headers: dict, query: str, rest: bytes, tok
     send_http(conn, "200 OK", json.dumps(result).encode(), "application/json")
 
 
+def handle_inspect(conn: socket.socket, headers: dict, query: str, token: str, display: str) -> None:
+    """List visible form fields on this display's Chromium. No values are returned."""
+    if not token_ok(request_token(headers, query), token):
+        send_http(conn, "401 Unauthorized", b"", "text/plain")
+        return
+    module = load_page_fill()
+    try:
+        result = module.inspect_display(display)
+    except module.FillError as exc:
+        status = "409 Conflict" if exc.code == "browser_not_open" else "422 Unprocessable Entity"
+        if exc.code in ("bad_request", "bad_display"):
+            status = "400 Bad Request"
+        send_http(conn, status, json.dumps({"error": exc.code}).encode(), "application/json")
+        return
+    send_http(conn, "200 OK", json.dumps(result).encode(), "application/json")
+
+
 def handle_http(conn: socket.socket, expected_token: str) -> None:
     data = bytearray()
     while b"\r\n\r\n" not in data:
@@ -547,6 +564,17 @@ def handle_http(conn: socket.socket, expected_token: str) -> None:
             if found and found.get("display"):
                 display = found["display"]
         handle_fill(conn, headers, parsed.query, rest, expected_token, display)
+        return
+    if method == "GET" and (
+        parsed.path == "/inspect" or (screen is not None and screen[1] == "inspect")
+    ):
+        agent_id = screen[0] if screen is not None and screen[1] == "inspect" else ""
+        display = os.environ.get("VNC_DISPLAY", ":1")
+        if agent_id and SCREENS is not None:
+            found = SCREENS.lookup(agent_id)
+            if found and found.get("display"):
+                display = found["display"]
+        handle_inspect(conn, headers, parsed.query, expected_token, display)
         return
     if screen is not None and method == "GET":
         agent_id, kind = screen

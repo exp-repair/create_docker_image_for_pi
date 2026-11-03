@@ -175,6 +175,12 @@ curl -I https://www.google.com
   `LENOVO_DEEPSEEK_V4_FLASH_API_KEY` is set it also merges Lenovo ModelFactory
   DeepSeek, trusts the baked CA via `NODE_EXTRA_CA_CERTS`, pins
   `modelfactory.lenovo.com` DNS, and (by default) sets DeepSeek as the Pi default.
+- `scripts/sync-pi-skills.sh` + `scripts/bind-pi-skills.sh`: seed image skills into
+  `/workspace/skills`, then `mount --bind` that directory onto
+  `/root/.pi/agent/skills` so new container-level skills persist automatically.
+  The image sets `COFORGE_CLOUD_COMPUTER=1` so CoForge also persists per-Agent
+  skills under `/workspace/agent-skills/<agentId>/` (gate off elsewhere → no
+  behavior change). Verify with `scripts/test_sync_pi_skills.sh`.
 - `scripts/configure-cursor-runtime.sh` resolves `cursor-agent`, writes
   `/root/.cursor/runtime.env` from `CURSOR_API_KEY` / `MULTICA_CURSOR_*`, and
   adjusts `NO_PROXY` for Cursor API hosts when a proxy is set.

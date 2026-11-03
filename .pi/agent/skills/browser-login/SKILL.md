@@ -30,7 +30,7 @@ mkdir -p /workspace/browser-shots
 ## 联想内网站点
 
 - 连通：镜像已装联想 CA；代理由启动脚本渲染（查看 `/etc/chromium/policies/managed/lenovo-intranet.json` 与 `echo $HTTPS_PROXY`）。
-- 登录：用 `coforge-chromium` 打开目标页（如 `https://home.lenovo.com`），**向用户要域账号/密码或验证码**，在页面上填写。不要把密码写进镜像或世界可读文件。
+- 登录：用 `coforge-chromium` 打开目标页（如 `https://home.lenovo.com`）。需要密码/验证码时，用 CoForge `page:fill` action card（或本机无法填时用 `desktop:takeover`），**不要**让用户把密码发到聊天里。不要把密码写进镜像或世界可读文件。
 - 若页打不开：先 `curl -sI -o /dev/null -w '%{http_code}\n' --connect-timeout 5 https://home.lenovo.com/`，并确认 `HTTPS_PROXY` / 策略里的 ProxyServer 非空。
 
 - **`DISPLAY` 必须已由任务注入**。若 unset：停止 GUI 浏览器操作并说明原因；**禁止**回退到 `:0`。
@@ -74,16 +74,28 @@ with sync_playwright() as p:
     page.goto("https://EXAMPLE/")
 ```
 
-### C. 已打开页面上的敏感填表
+### C. 已打开页面上的敏感填表（优先）
 
-`/usr/local/bin/page-fill.py` 经 token 化 CDP 填字段。Agent 侧优先用 Playwright `fill`，密码不要写进 shell 历史或世界可读文件。
+1. 打开登录页后，需要账号/密码时发 `page:fill` 卡片（只需 `id`/`label`/`input`，不必硬猜 CSS）：
+
+```bash
+coforge action prepare --target "@owner" <<'COFORGEACTION'
+{"type":"page:fill","prompt":"Sign in","fields":[{"id":"username","label":"Username","input":"text"},{"id":"password","label":"Password","input":"password"}]}
+COFORGEACTION
+```
+
+2. 需要看页面上有哪些格子时：`python3 /usr/local/bin/page-fill.py --inspect`
+3. OAuth / 图形验证码 / 填不了：发 `desktop:takeover`，让用户自己打开云电脑。
+4. **禁止**在聊天里索要密码；即使用户发来了，也不要键入，改推卡片。
+
+多种登录方式时先发 `choice` 卡片再进入上面步骤。
 
 ## 操作清单
 
 1. 确认 `DISPLAY` → `coforge-cdp-endpoint` → 打开目标 URL。
-2. 识别登录/注册入口并进入表单。
-3. 缺凭证就问用户；有凭证就填写并提交。
-4. 处理同意条款、验证码等。
+2. 识别登录/注册入口并进入表单；多路径用 `choice`。
+3. 缺凭证 → `page:fill`（或 `desktop:takeover`）；不要让用户把密码打进聊天。
+4. 卡片 `[action card: executed]` 后继续提交或后续步骤。
 5. 截图或 DOM 检查确认成功。
 6. 简短回报结果。
 
@@ -93,3 +105,4 @@ with sync_playwright() as p:
 - 无 `DISPLAY` 时禁止打开/附着 GUI 浏览器。
 - 只使用 `coforge-cdp-endpoint` 的 URL 做 CDP。
 - 不要把完整密码回显到聊天或写入世界可读日志。
+- 不要要求用户把密码粘贴到对话里。

@@ -29,7 +29,7 @@ ls -la /workspace /workspace/uploads /workspace/browser-shots 2>/dev/null || tru
 | Chromium | `coforge-chromium`（`chromium` 为其包装） | GUI；CDP 经 token 门控 |
 | 本路 CDP | `coforge-cdp-endpoint` | 打印可连接的基址 URL |
 | Playwright | 不预装；`pip install` 进 venv | `connect_over_cdp(coforge-cdp-endpoint 输出)`；勿 `playwright install`、勿装进系统盘 |
-| 填表辅助 | `/usr/local/bin/page-fill.py` | 经 token 化 CDP 填字段 |
+| 填表辅助 | `/usr/local/bin/page-fill.py` | 经 token 化 CDP 填字段；`--inspect` 列出可见输入框 |
 
 ## 隔离提醒（防串台）
 
