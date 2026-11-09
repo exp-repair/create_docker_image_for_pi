@@ -29,13 +29,27 @@ All account-scoped tools and configs live under root (`/root/.npm-global`,
 non-root `user` account is removed from the final image to avoid split runtime
 state.
 
-## Staging Swarm computer
+## Swarm computer (staging / production)
+
+环境相关地址与镜像 tag 由配置文件驱动，不再写死 staging：
 
 ```bash
+cp config/coforge.env.example config/coforge.env
+# 编辑 COFORGE_ENV=staging 或 production
+# 也可改 config/environments/<env>.env 里的 feed / cloud host / image tag
+
 ./scripts/build-swarm.sh
+# 或一次性覆盖：
+# COFORGE_ENV=production ./scripts/build-swarm.sh
 ```
 
-Tags `coforge-computer:staging`. The script downloads the current `linux-x64` Computer from `https://releases-staging.coforge.cn` and checks its checksum. The image entrypoint is `coforge-computer foreground`; it does not run `setup --workspace`. On start it relocates user-installed `/opt` apps, home folders, **`/workspace`**, and a **Python venv** onto the `/root/.coforge` volume so an image replace keeps task files and `pip install` packages. Pi, DeepSeek, and the Lenovo CA are baked in. The DeepSeek key comes from `config/pi.env`, so do not push this image to a public registry. The staging operator steps are in the CoForge repository at `docs/operations/cloud-swarm/staging-bring-up.md`.
+| 配置 | 作用 |
+| --- | --- |
+| `config/coforge.env` | 选择 `COFORGE_ENV`，可覆盖单个字段（已 gitignore） |
+| `config/environments/staging.env` | staging feed / cloud host / tag |
+| `config/environments/production.env` | production feed / cloud host / tag |
+
+`build-swarm.sh` 会按配置下载对应 feed 的 `linux-x64` Computer、校验 checksum，并用 `COFORGE_CLOUD_HOST` 检查二进制是否面向该环境。镜像内会写入 `COFORGE_RELEASE_FEED_URL`，供运行时 `activate-computer-release` 使用。入口仍是 `coforge-computer foreground`，不跑 `setup --workspace`。启动时会把用户安装的 `/opt`、home、`/workspace`、Python venv 迁到 `/root/.coforge` volume。Pi / DeepSeek / Lenovo CA 打进镜像；DeepSeek key 来自 `config/pi.env`，勿推公共仓库。staging 运维步骤见 CoForge 仓库 `docs/operations/cloud-swarm/staging-bring-up.md`。
 
 ## Build locally
 

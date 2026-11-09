@@ -1,4 +1,5 @@
 config/pi.env
+config/coforge.env
 config/pi-agent/models.json
 config/pi-agent/settings.json
 config/pi-agent/certs/

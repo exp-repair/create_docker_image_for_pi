@@ -17,6 +17,7 @@ EXTRA=(
 mkdir -p coforge
 if [[ -n "${COFORGE_RELEASE_FEED_URL:-}" ]]; then
   feed="${COFORGE_RELEASE_FEED_URL%/}"
+  cloud_host="${COFORGE_CLOUD_HOST:-}"
   version="$(curl -fsSL "${feed}/latest" | tr -d '[:space:]')"
   case "${version}" in
     ""|latest|.|*..*|-*)
@@ -41,17 +42,26 @@ if [[ -n "${COFORGE_RELEASE_FEED_URL:-}" ]]; then
     echo "[build.sh] ERROR: Computer checksum mismatch" >&2
     exit 1
   fi
-  if ! grep -a -q 'https://staging.coforge.cn' coforge/coforge-computer; then
-    echo "[build.sh] ERROR: downloaded Computer is not baked for https://staging.coforge.cn" >&2
-    exit 1
+  if [[ -n "${cloud_host}" ]]; then
+    if ! grep -a -q "${cloud_host}" coforge/coforge-computer; then
+      echo "[build.sh] ERROR: downloaded Computer is not baked for ${cloud_host}" >&2
+      exit 1
+    fi
+  else
+    echo "[build.sh] WARN: COFORGE_CLOUD_HOST unset; skipping cloud-host bake check" >&2
   fi
   if ! grep -a -q 'COFORGE_CLUSTER_TOKEN' coforge/coforge-computer; then
     echo "[build.sh] ERROR: downloaded Computer has no cloud host; publish the post-merge build first" >&2
     exit 1
   fi
   chmod 755 coforge/coforge-computer
-  EXTRA+=(--build-arg "COMPUTER_VERSION=${version}")
-  echo "[build.sh] staged CoForge Computer ${version} from ${feed}"
+  EXTRA+=(
+    --build-arg "COMPUTER_VERSION=${version}"
+    --build-arg "COFORGE_RELEASE_FEED_URL=${feed}"
+    --build-arg "COFORGE_ENVIRONMENT=${COFORGE_ENVIRONMENT:-}"
+    --build-arg "COFORGE_CLOUD_HOST=${cloud_host}"
+  )
+  echo "[build.sh] staged CoForge Computer ${version} from ${feed} (env=${COFORGE_ENVIRONMENT:-unknown})"
 else
   COFORGE_COMPUTER_BIN="${COFORGE_COMPUTER_BIN:-${HOME}/.coforge/computer/install/active/coforge-computer}"
   if [[ ! -x "${COFORGE_COMPUTER_BIN}" ]]; then

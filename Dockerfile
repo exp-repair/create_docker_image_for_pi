@@ -1,7 +1,7 @@
-# Staging Swarm computer image. The host starts this image with no command.
-# The entrypoint keeps the desktop listeners up and runs `coforge-computer
-# foreground` as a child. The host injects the binding environment; this image
-# does not run `setup --workspace`.
+# Swarm computer image (staging or production via config/environments).
+# The host starts this image with no command. The entrypoint keeps the desktop
+# listeners up and runs `coforge-computer foreground` as a child. The host
+# injects the binding environment; this image does not run `setup --workspace`.
 # Pi, DeepSeek, and the Lenovo CA stay in the image. The desktop is a slim
 # XFCE session: Chromium, Thunar, and a terminal, with the CoForge mark on
 # the wallpaper. It stays down until a client connects.
@@ -20,12 +20,18 @@ ARG NPM_REGISTRY=
 ARG APT_MIRROR=https://mirrors.cloud.tencent.com/debian
 ARG APT_SECURITY_MIRROR=https://mirrors.cloud.tencent.com/debian-security
 ARG COMPUTER_VERSION=
+ARG COFORGE_ENVIRONMENT=
+ARG COFORGE_RELEASE_FEED_URL=
+ARG COFORGE_CLOUD_HOST=
 
 USER root
 
 ENV HOME=/root \
     PYTHONUNBUFFERED=1 \
     COFORGE_CLOUD_COMPUTER=1 \
+    COFORGE_ENVIRONMENT=${COFORGE_ENVIRONMENT} \
+    COFORGE_RELEASE_FEED_URL=${COFORGE_RELEASE_FEED_URL} \
+    COFORGE_CLOUD_HOST=${COFORGE_CLOUD_HOST} \
     PI_WEB_HOST=0.0.0.0 \
     PI_WEB_PORT=6079 \
     PI_WEB_WORKSPACE=/workspace \

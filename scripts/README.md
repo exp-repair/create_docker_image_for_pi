@@ -18,7 +18,9 @@ Cube template/sandbox, and configuring Pi + Cursor Agent + Multica at runtime.
 
 | Script | Purpose |
 | --- | --- |
-| `build.sh` | Downloads or reuses the Multica binary from `https://cdn.leagent.me/computer` via `metainfo.json` (same feed as `install.sh`), then builds the image. Supports `MULTICA_VERSION=latest|test|vX.Y.Z`, `APT_MIRROR` / `APT_SECURITY_MIRROR` (default Aliyun Debian mirrors), `TAG`, `SANDBOX_IMAGE`, `NODE_MAJOR`, `INSTALL_PI`, `INSTALL_CURSOR`, `PI_SUITE_VERSION`, `NPM_REGISTRY`, `MULTICA_SKIP_DOWNLOAD`, `MULTICA_FORCE_DOWNLOAD`, `MULTICA_LOCAL_BIN`, `MULTICA_RELEASE_MANIFEST_BASE_URL`, and standard proxy build args. |
+| `build-swarm.sh` | Loads `config/coforge.env` + `config/environments/<COFORGE_ENV>.env`, then builds the Swarm computer image (`TAG` / feed / cloud host come from that config). |
+| `lib/coforge-env.sh` | Shared loader for CoForge environment presets. Priority: exported vars → `config/coforge.env` → `config/environments/<env>.env`. |
+| `build.sh` | Builds the image. When `COFORGE_RELEASE_FEED_URL` is set (usually via `build-swarm.sh`), downloads Computer from that feed and checks `COFORGE_CLOUD_HOST`. Otherwise reuses a local `coforge-computer` binary. Also supports Pi / apt / pip build args. |
 | `build-test.sh` | Independent test/alpha image build. Default tag `cube-leagent-template-test:local`, default `MULTICA_VERSION=test` (latest alpha, same as `install.sh --version v0.4.24-alpha.79`). Caches the binary under `multica/bin-test/` so `build.sh` is not affected. |
 | `run.sh` | Runs the image locally, maps `6079`, `6080`, `5901`, `49983`, `49999`, and passes `TEAM_*`, `AREAL_*`, `BRIDGE_USER_ID`, `CURSOR_API_KEY`, `MULTICA_*`, and optional sandbox proxy env values. Uses `DOCKER_BIN` when set. |
 | `run-test.sh` | Independent runner for the test image. Default container name suffix `-cube-leagent-test` and host ports `27079` / `27080` / `26901` / `25983` / `25999`. |

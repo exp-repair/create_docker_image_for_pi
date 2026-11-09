@@ -4,13 +4,17 @@
 set -euo pipefail
 
 version="${1:-}"
-feed="${COFORGE_RELEASE_FEED_URL:-https://releases-staging.coforge.cn}"
+feed="${COFORGE_RELEASE_FEED_URL:-}"
 feed="${feed%/}"
 VOLUME="${COFORGE_PERSIST_ROOT:-/root/.coforge}"
 INSTALL="${COFORGE_COMPUTER_INSTALL_ROOT:-${VOLUME}/computer/install}"
 
 log() { echo "[activate-computer-release] $*" >&2; }
 
+if [[ -z "${feed}" ]]; then
+  log "COFORGE_RELEASE_FEED_URL is not set (bake it at image build or pass at runtime)"
+  exit 1
+fi
 if [[ ! "${version}" =~ ^[A-Za-z0-9.+-]{1,100}$ ]] || [[ "${version}" == "." ]] || [[ "${version}" == -* ]] || [[ "${version}" == *..* ]]; then
   log "refusing version"
   exit 1
