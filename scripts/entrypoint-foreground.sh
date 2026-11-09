@@ -72,14 +72,14 @@ if [[ "${VNC_ENABLE:-1}" != "0" ]]; then
   fi
 fi
 
-# After an image replace, foreground recovers bindings once; if that handshake
-# misses, the Workspace stays down. This watcher re-runs start until cloud is
-# connected again (parked Workspaces are left alone).
-if [[ "${COFORGE_WORKSPACE_WATCH:-1}" != "0" && -x /usr/local/bin/watch-computer-workspaces.sh ]]; then
-  /usr/local/bin/watch-computer-workspaces.sh >/tmp/watch-computer-workspaces.log 2>&1 &
+# Align with staging: PID 1 is coforge-computer foreground (one-shot binding
+# recovery on start). No outer supervise wrapper / workspace watchdog — those
+# added failure modes around volume-stale process-instance after image replace.
+# rebuild-marker: 2026-11-09-prod-image-bump
+bin=/usr/local/bin/coforge-computer
+if [[ -x /usr/local/bin/select-computer-binary.sh ]]; then
+  if selected="$(/usr/local/bin/select-computer-binary.sh 2>/dev/null)"; then
+    [[ -n "${selected}" && -x "${selected}" ]] && bin="${selected}"
+  fi
 fi
-
-# The supervisor stays up and runs the selected program as a child, so a
-# runtime upgrade can replace that program without recreating the container.
-# Seeding and selection happen when the child starts.
-exec /usr/local/bin/supervise-computer-runtime.sh
+exec "${bin}" foreground

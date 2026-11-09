@@ -423,7 +423,9 @@ RUN mkdir -p /usr/local/lib/coforge /usr/local/share/coforge \
   && test -x /usr/local/bin/activate-computer-release.sh \
   && test -x /usr/local/bin/supervise-computer-runtime.sh \
   && test -x /usr/local/bin/watch-computer-workspaces.sh \
-  && grep -q 'watch-computer-workspaces.sh' /usr/local/bin/entrypoint-foreground.sh \
+  && grep -q 'exec "${bin}" foreground' /usr/local/bin/entrypoint-foreground.sh \
+  && ! grep -q 'supervise-computer-runtime.sh' /usr/local/bin/entrypoint-foreground.sh \
+  && ! grep -q 'watch-computer-workspaces.sh' /usr/local/bin/entrypoint-foreground.sh \
   && test -x /usr/local/bin/restart-computer-runtime.sh
 
 WORKDIR /workspace
