@@ -8,6 +8,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# shellcheck disable=SC1091
+source ./scripts/lib/ensure-docker.sh
+ensure_docker
+
 TAG="${TAG:-cube-leagent-template-test:local}"
 SANDBOX_IMAGE="${SANDBOX_IMAGE:-cube-sandbox-cn.tencentcloudcr.com/cube-sandbox/sandbox-code@sha256:b551b169de85c0216cce9453a8e22059ca47fd3dceced75e918cf1c8de60464b}"
 PI_CONFIG="${PI_CONFIG:-config/pi.env}"
@@ -299,5 +303,5 @@ echo "[build-test.sh] SANDBOX_IMAGE=${SANDBOX_IMAGE}"
 echo "[build-test.sh] APT_MIRROR=${APT_MIRROR:-https://mirrors.cloud.tencent.com/debian}"
 echo "[build-test.sh] PIP_INDEX_URL=${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
 echo "[build-test.sh] tag=${TAG}"
-docker build "${EXTRA[@]}" -t "${TAG}" .
+"${DOCKER_BIN}" build "${EXTRA[@]}" -t "${TAG}" .
 echo "[build-test.sh] built ${TAG}"

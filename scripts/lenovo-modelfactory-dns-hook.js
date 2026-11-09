@@ -1,10 +1,11 @@
-// Force Lenovo ModelFactory hostname to the intranet IP when /etc/hosts is
-// read-only (Cube/Multica sandboxes mount tmpfs RO over /etc/hosts).
+// Force Lenovo Aimaster / ModelFactory hostnames to intranet IPs when
+// /etc/hosts is read-only (Cube/Multica sandboxes mount tmpfs RO over /etc/hosts).
 'use strict';
 
 const dns = require('node:dns');
 
 const HOST_MAP = Object.freeze({
+  'braimaster.lenovo.com': '10.46.124.101',
   'modelfactory.lenovo.com': '10.110.158.101',
 });
 

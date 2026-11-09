@@ -3,8 +3,9 @@
 # Prefers TEAM_PI_CONFIG (multi-provider JSON). Falls back to TEAM_* flat env
 # for older Multica / sandboxd builds.
 #
-# When LENOVO_DEEPSEEK_V4_FLASH_API_KEY is set, also merges Lenovo ModelFactory
-# DeepSeek-V4-Flash into models.json and (by default) makes it the Pi default.
+# When LENOVO_BRAIMASTER_API_KEY / LENOVO_DEEPSEEK_V4_FLASH_API_KEY are set,
+# merges Brazil Aimaster (llm1/muse-spark) and Beijing ModelFactory
+# (llm2/DeepSeek). Default preference: BRAIMASTER_AS_DEFAULT > DEEPSEEK_AS_DEFAULT.
 set -euo pipefail
 
 log() { echo "[configure-pi-runtime] $*"; }
@@ -30,24 +31,35 @@ AREAL_API="${AREAL_API:-openai-completions}"
 AREAL_API_KEY="${AREAL_API_KEY:-bridge}"
 BRIDGE_USER_ID="${BRIDGE_USER_ID:-}"
 
-LENOVO_DEEPSEEK_PROVIDER="${LENOVO_DEEPSEEK_PROVIDER:-openai}"
+LENOVO_BRAIMASTER_PROVIDER="${LENOVO_BRAIMASTER_PROVIDER:-llm1}"
+LENOVO_BRAIMASTER_MODEL="${LENOVO_BRAIMASTER_MODEL:-muse-spark}"
+LENOVO_BRAIMASTER_MODEL_NAME="${LENOVO_BRAIMASTER_MODEL_NAME:-muse-spark-nvfp4}"
+LENOVO_BRAIMASTER_BASE_URL="${LENOVO_BRAIMASTER_BASE_URL:-https://braimaster.lenovo.com/llm/v1}"
+LENOVO_BRAIMASTER_HOST="${LENOVO_BRAIMASTER_HOST:-braimaster.lenovo.com}"
+LENOVO_BRAIMASTER_IP="${LENOVO_BRAIMASTER_IP:-10.46.124.101}"
+LENOVO_BRAIMASTER_AS_DEFAULT="${LENOVO_BRAIMASTER_AS_DEFAULT:-1}"
+LENOVO_BRAIMASTER_API_KEY="${LENOVO_BRAIMASTER_API_KEY:-}"
+PI_BRAIMASTER_TEMPLATE="${PI_BRAIMASTER_TEMPLATE:-/usr/local/share/coforge/pi-braimaster-provider.json}"
+
+LENOVO_DEEPSEEK_PROVIDER="${LENOVO_DEEPSEEK_PROVIDER:-llm2}"
 LENOVO_DEEPSEEK_MODEL="${LENOVO_DEEPSEEK_MODEL:-DeepSeek}"
 LENOVO_DEEPSEEK_BASE_URL="${LENOVO_DEEPSEEK_BASE_URL:-https://modelfactory.lenovo.com/llm/v1}"
 LENOVO_DEEPSEEK_MODEL_NAME="${LENOVO_DEEPSEEK_MODEL_NAME:-DeepSeek}"
 PI_MODELFACTORY_TEMPLATE="${PI_MODELFACTORY_TEMPLATE:-/usr/local/share/coforge/pi-modelfactory-provider.json}"
 LENOVO_MODELFACTORY_HOST="${LENOVO_MODELFACTORY_HOST:-modelfactory.lenovo.com}"
 LENOVO_MODELFACTORY_IP="${LENOVO_MODELFACTORY_IP:-10.110.158.101}"
-LENOVO_DEEPSEEK_AS_DEFAULT="${LENOVO_DEEPSEEK_AS_DEFAULT:-1}"
+LENOVO_DEEPSEEK_AS_DEFAULT="${LENOVO_DEEPSEEK_AS_DEFAULT:-0}"
 LENOVO_DEEPSEEK_V4_FLASH_API_KEY="${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:-}"
 
-# Prefer image-baked key when runtime env did not inject one.
-if [[ -z "${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}" && -f "${MODEL_FACTORY_ENV_FILE}" ]]; then
+# Prefer image-baked keys when runtime env did not inject them.
+if [[ ( -z "${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}" || -z "${LENOVO_BRAIMASTER_API_KEY}" ) && -f "${MODEL_FACTORY_ENV_FILE}" ]]; then
   # shellcheck disable=SC1090
   set -a
   # shellcheck disable=SC1090
   source "${MODEL_FACTORY_ENV_FILE}"
   set +a
   LENOVO_DEEPSEEK_V4_FLASH_API_KEY="${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:-}"
+  LENOVO_BRAIMASTER_API_KEY="${LENOVO_BRAIMASTER_API_KEY:-}"
 fi
 
 ensure_lenovo_ca() {
@@ -77,9 +89,9 @@ ensure_lenovo_ca() {
     fi
   fi
 }
-ensure_lenovo_dns() {
-  local host="${LENOVO_MODELFACTORY_HOST}"
-  local ip="${LENOVO_MODELFACTORY_IP}"
+pin_lenovo_host() {
+  local host="$1"
+  local ip="$2"
   [[ -n "${host}" && -n "${ip}" ]] || return 0
   # Cube sandboxes mount /etc/hosts as read-only tmpfs; Node uses
   # /usr/local/lib/lenovo-modelfactory-dns-hook.js instead.
@@ -110,20 +122,25 @@ ensure_lenovo_dns() {
   log "dns ${host} -> ${ip} (/etc/hosts)"
 }
 
+ensure_lenovo_dns() {
+  pin_lenovo_host "${LENOVO_BRAIMASTER_HOST}" "${LENOVO_BRAIMASTER_IP}"
+  pin_lenovo_host "${LENOVO_MODELFACTORY_HOST}" "${LENOVO_MODELFACTORY_IP}"
+}
+
 write_model_factory_env() {
-  local key="${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}"
-  [[ -n "${key}" ]] || return 0
+  [[ -n "${LENOVO_BRAIMASTER_API_KEY}" || -n "${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}" ]] || return 0
   mkdir -p "${AGENT_DIR}"
   umask 077
-  cat > "${MODEL_FACTORY_ENV_FILE}" <<EOF
-LENOVO_DEEPSEEK_V4_FLASH_API_KEY=${key}
-EOF
+  {
+    [[ -n "${LENOVO_BRAIMASTER_API_KEY}" ]] && printf 'LENOVO_BRAIMASTER_API_KEY=%s\n' "${LENOVO_BRAIMASTER_API_KEY}"
+    [[ -n "${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}" ]] && printf 'LENOVO_DEEPSEEK_V4_FLASH_API_KEY=%s\n' "${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}"
+  } > "${MODEL_FACTORY_ENV_FILE}"
   chmod 600 "${MODEL_FACTORY_ENV_FILE}"
   log "wrote ${MODEL_FACTORY_ENV_FILE}"
 }
 
-if [[ -z "${TEAM_PI_CONFIG:-}" && -z "${TEAM_API_KEY:-}" && -z "${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}" ]]; then
-  log "WARN: TEAM_PI_CONFIG / TEAM_API_KEY / LENOVO_DEEPSEEK_V4_FLASH_API_KEY are empty; Pi may still need an API key"
+if [[ -z "${TEAM_PI_CONFIG:-}" && -z "${TEAM_API_KEY:-}" && -z "${LENOVO_BRAIMASTER_API_KEY}" && -z "${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}" ]]; then
+  log "WARN: TEAM_PI_CONFIG / TEAM_API_KEY / LENOVO_BRAIMASTER_API_KEY / LENOVO_DEEPSEEK_V4_FLASH_API_KEY are empty; Pi may still need an API key"
 fi
 if [[ -z "${BRIDGE_USER_ID}" ]]; then
   log "WARN: BRIDGE_USER_ID is empty; areal.headers.X-Bridge-User-Id will be blank"
@@ -171,6 +188,13 @@ if command -v node >/dev/null 2>&1; then
   AREAL_BASE_URL="${AREAL_BASE_URL}" \
   AREAL_API="${AREAL_API}" \
   AREAL_API_KEY="${AREAL_API_KEY}" \
+  LENOVO_BRAIMASTER_API_KEY="${LENOVO_BRAIMASTER_API_KEY}" \
+  LENOVO_BRAIMASTER_PROVIDER="${LENOVO_BRAIMASTER_PROVIDER}" \
+  LENOVO_BRAIMASTER_MODEL="${LENOVO_BRAIMASTER_MODEL}" \
+  LENOVO_BRAIMASTER_MODEL_NAME="${LENOVO_BRAIMASTER_MODEL_NAME}" \
+  LENOVO_BRAIMASTER_BASE_URL="${LENOVO_BRAIMASTER_BASE_URL}" \
+  LENOVO_BRAIMASTER_AS_DEFAULT="${LENOVO_BRAIMASTER_AS_DEFAULT}" \
+  PI_BRAIMASTER_TEMPLATE="${PI_BRAIMASTER_TEMPLATE}" \
   LENOVO_DEEPSEEK_V4_FLASH_API_KEY="${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}" \
   LENOVO_DEEPSEEK_PROVIDER="${LENOVO_DEEPSEEK_PROVIDER}" \
   LENOVO_DEEPSEEK_MODEL="${LENOVO_DEEPSEEK_MODEL}" \
@@ -272,10 +296,39 @@ function upsertProvider(providers, entry) {
   providers[entry.name] = existing;
 }
 
+function mergeBraimaster(providers) {
+  const apiKey = String(process.env.LENOVO_BRAIMASTER_API_KEY || "").trim();
+  if (!apiKey) return null;
+  const name = String(process.env.LENOVO_BRAIMASTER_PROVIDER || "llm1").trim() || "llm1";
+  const modelId = String(process.env.LENOVO_BRAIMASTER_MODEL || "muse-spark").trim() || "muse-spark";
+  const templatePath = String(process.env.PI_BRAIMASTER_TEMPLATE || "").trim();
+  const template = templatePath && fs.existsSync(templatePath) ? readJson(templatePath) : {};
+  providers[name] = {
+    baseUrl: String(process.env.LENOVO_BRAIMASTER_BASE_URL || template.baseUrl || "").trim(),
+    api: template.api || "openai-completions",
+    apiKey,
+    compat: template.compat || {
+      supportsDeveloperRole: false,
+      supportsReasoningEffort: false,
+    },
+    models: Array.isArray(template.models) && template.models.length > 0 ? template.models : [
+      {
+        id: modelId,
+        name: String(process.env.LENOVO_BRAIMASTER_MODEL_NAME || "muse-spark-nvfp4").trim(),
+        reasoning: false,
+        input: ["text"],
+        contextWindow: 128000,
+        maxTokens: 8192,
+      },
+    ],
+  };
+  return { name, modelId };
+}
+
 function mergeLenovoDeepseek(providers) {
   const apiKey = String(process.env.LENOVO_DEEPSEEK_V4_FLASH_API_KEY || "").trim();
-  if (!apiKey) return false;
-  const name = String(process.env.LENOVO_DEEPSEEK_PROVIDER || "openai").trim() || "openai";
+  if (!apiKey) return null;
+  const name = String(process.env.LENOVO_DEEPSEEK_PROVIDER || "llm2").trim() || "llm2";
   const modelId = String(process.env.LENOVO_DEEPSEEK_MODEL || "DeepSeek").trim() || "DeepSeek";
   const templatePath = String(process.env.PI_MODELFACTORY_TEMPLATE || "").trim();
   const template = templatePath && fs.existsSync(templatePath) ? readJson(templatePath) : {};
@@ -318,6 +371,7 @@ for (const entry of cfg.providers) {
   upsertProvider(providers, entry);
 }
 
+const braimaster = mergeBraimaster(providers);
 const lenovo = mergeLenovoDeepseek(providers);
 const next = { ...models, providers, areal: buildAreal() };
 fs.writeFileSync(modelsPath, `${JSON.stringify(next, null, 2)}\n`);
@@ -326,10 +380,14 @@ try { fs.chmodSync(modelsPath, 0o600); } catch {}
 const settings = readJson(settingsPath);
 const hasTeamCreds = Boolean(String(process.env.TEAM_API_KEY || "").trim())
   || Boolean(String(process.env.TEAM_PI_CONFIG || "").trim());
-let defaultProvider = settings.defaultProvider || cfg.defaultProvider || "openai";
+let defaultProvider = settings.defaultProvider || cfg.defaultProvider || "llm1";
 let defaultModel = settings.defaultModel || cfg.defaultModel || (cfg.providers[0] && cfg.providers[0].model) || "";
-const asDefault = String(process.env.LENOVO_DEEPSEEK_AS_DEFAULT || "1").trim() !== "0";
-if (lenovo && asDefault) {
+const braimasterAsDefault = String(process.env.LENOVO_BRAIMASTER_AS_DEFAULT || "1").trim() !== "0";
+const deepseekAsDefault = String(process.env.LENOVO_DEEPSEEK_AS_DEFAULT || "0").trim() !== "0";
+if (braimaster && braimasterAsDefault) {
+  defaultProvider = braimaster.name;
+  defaultModel = braimaster.modelId;
+} else if (lenovo && deepseekAsDefault) {
   defaultProvider = lenovo.name;
   defaultModel = lenovo.modelId;
 } else if (hasTeamCreds) {
@@ -340,13 +398,15 @@ fs.writeFileSync(settingsPath, `${JSON.stringify({
   ...settings,
   defaultProvider,
   defaultModel,
-  ...(lenovo && asDefault ? { defaultThinkingLevel: settings.defaultThinkingLevel || "high" } : {}),
+  ...((braimaster && braimasterAsDefault) || (lenovo && deepseekAsDefault)
+    ? { defaultThinkingLevel: settings.defaultThinkingLevel || "high" }
+    : {}),
   theme: settings.theme ?? "dark",
 }, null, 2)}\n`);
 try { fs.chmodSync(settingsPath, 0o600); } catch {}
 
 const providerNames = Object.keys(providers).join(",");
-console.log(`[configure-pi-runtime] providers=${providerNames} defaultProvider=${defaultProvider} defaultModel=${defaultModel}${lenovo ? " lenovo=on" : ""}`);
+console.log(`[configure-pi-runtime] providers=${providerNames} defaultProvider=${defaultProvider} defaultModel=${defaultModel}${braimaster ? " braimaster=on" : ""}${lenovo ? " deepseek=on" : ""}`);
 NODE
 elif command -v python3 >/dev/null 2>&1; then
   PI_MODELS_FILE="${MODELS_FILE}" \
@@ -361,6 +421,13 @@ elif command -v python3 >/dev/null 2>&1; then
   AREAL_BASE_URL="${AREAL_BASE_URL}" \
   AREAL_API="${AREAL_API}" \
   AREAL_API_KEY="${AREAL_API_KEY}" \
+  LENOVO_BRAIMASTER_API_KEY="${LENOVO_BRAIMASTER_API_KEY}" \
+  LENOVO_BRAIMASTER_PROVIDER="${LENOVO_BRAIMASTER_PROVIDER}" \
+  LENOVO_BRAIMASTER_MODEL="${LENOVO_BRAIMASTER_MODEL}" \
+  LENOVO_BRAIMASTER_MODEL_NAME="${LENOVO_BRAIMASTER_MODEL_NAME}" \
+  LENOVO_BRAIMASTER_BASE_URL="${LENOVO_BRAIMASTER_BASE_URL}" \
+  LENOVO_BRAIMASTER_AS_DEFAULT="${LENOVO_BRAIMASTER_AS_DEFAULT}" \
+  PI_BRAIMASTER_TEMPLATE="${PI_BRAIMASTER_TEMPLATE}" \
   LENOVO_DEEPSEEK_V4_FLASH_API_KEY="${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}" \
   LENOVO_DEEPSEEK_PROVIDER="${LENOVO_DEEPSEEK_PROVIDER}" \
   LENOVO_DEEPSEEK_MODEL="${LENOVO_DEEPSEEK_MODEL}" \
@@ -462,11 +529,41 @@ def upsert_provider(providers, entry):
     providers[entry["name"]] = existing
 
 
+def merge_braimaster(providers):
+    api_key = str(os.environ.get("LENOVO_BRAIMASTER_API_KEY") or "").strip()
+    if not api_key:
+        return None
+    name = str(os.environ.get("LENOVO_BRAIMASTER_PROVIDER") or "llm1").strip() or "llm1"
+    model_id = str(os.environ.get("LENOVO_BRAIMASTER_MODEL") or "muse-spark").strip() or "muse-spark"
+    template = {}
+    template_path = str(os.environ.get("PI_BRAIMASTER_TEMPLATE") or "").strip()
+    if template_path and Path(template_path).exists():
+        template = read_json(Path(template_path))
+    providers[name] = {
+        "baseUrl": str(os.environ.get("LENOVO_BRAIMASTER_BASE_URL") or template.get("baseUrl") or "").strip(),
+        "api": template.get("api") or "openai-completions",
+        "apiKey": api_key,
+        "compat": template.get("compat") or {
+            "supportsDeveloperRole": False,
+            "supportsReasoningEffort": False,
+        },
+        "models": template.get("models") if isinstance(template.get("models"), list) and template.get("models") else [{
+            "id": model_id,
+            "name": str(os.environ.get("LENOVO_BRAIMASTER_MODEL_NAME") or "muse-spark-nvfp4").strip(),
+            "reasoning": False,
+            "input": ["text"],
+            "contextWindow": 128000,
+            "maxTokens": 8192,
+        }],
+    }
+    return {"name": name, "modelId": model_id}
+
+
 def merge_lenovo_deepseek(providers):
     api_key = str(os.environ.get("LENOVO_DEEPSEEK_V4_FLASH_API_KEY") or "").strip()
     if not api_key:
         return None
-    name = str(os.environ.get("LENOVO_DEEPSEEK_PROVIDER") or "openai").strip() or "openai"
+    name = str(os.environ.get("LENOVO_DEEPSEEK_PROVIDER") or "llm2").strip() or "llm2"
     model_id = str(os.environ.get("LENOVO_DEEPSEEK_MODEL") or "DeepSeek").strip() or "DeepSeek"
     template = {}
     template_path = str(os.environ.get("PI_MODELFACTORY_TEMPLATE") or "").strip()
@@ -507,6 +604,7 @@ for entry in cfg["providers"]:
         continue
     upsert_provider(providers, entry)
 
+braimaster = merge_braimaster(providers)
 lenovo = merge_lenovo_deepseek(providers)
 models["providers"] = providers
 models["areal"] = build_areal()
@@ -520,19 +618,23 @@ settings = read_json(settings_path)
 has_team_creds = bool(str(os.environ.get("TEAM_API_KEY") or "").strip()) or bool(
     str(os.environ.get("TEAM_PI_CONFIG") or "").strip()
 )
-default_provider = settings.get("defaultProvider") or cfg.get("defaultProvider") or "openai"
+default_provider = settings.get("defaultProvider") or cfg.get("defaultProvider") or "llm1"
 default_model = settings.get("defaultModel") or cfg.get("defaultModel") or (
     cfg["providers"][0].get("model") if cfg["providers"] else ""
 ) or ""
-as_default = str(os.environ.get("LENOVO_DEEPSEEK_AS_DEFAULT") or "1").strip() != "0"
-if lenovo and as_default:
+braimaster_as_default = str(os.environ.get("LENOVO_BRAIMASTER_AS_DEFAULT") or "1").strip() != "0"
+deepseek_as_default = str(os.environ.get("LENOVO_DEEPSEEK_AS_DEFAULT") or "0").strip() != "0"
+if braimaster and braimaster_as_default:
+    default_provider = braimaster["name"]
+    default_model = braimaster["modelId"]
+elif lenovo and deepseek_as_default:
     default_provider = lenovo["name"]
     default_model = lenovo["modelId"]
 elif has_team_creds:
     default_provider = cfg.get("defaultProvider") or default_provider
     default_model = cfg.get("defaultModel") or default_model
 settings.update({"defaultProvider": default_provider, "defaultModel": default_model})
-if lenovo and as_default:
+if (braimaster and braimaster_as_default) or (lenovo and deepseek_as_default):
     settings.setdefault("defaultThinkingLevel", "high")
 settings.setdefault("theme", "dark")
 settings_path.write_text(json.dumps(settings, indent=2) + "\n")
@@ -543,7 +645,8 @@ except Exception:
 print(
     f"[configure-pi-runtime] providers={','.join(providers.keys())} "
     f"defaultProvider={default_provider} defaultModel={default_model}"
-    f"{' lenovo=on' if lenovo else ''}"
+    f"{' braimaster=on' if braimaster else ''}"
+    f"{' deepseek=on' if lenovo else ''}"
 )
 PY
 else
@@ -555,4 +658,4 @@ if [[ "$(id -u)" == "0" ]] && [[ "${PI_USER}" != "root" ]] && id "${PI_USER}" >/
   chown -R "${PI_USER}:${PI_USER}" "${AGENT_DIR}"
 fi
 
-log "configured TEAM_PI_CONFIG=${TEAM_PI_CONFIG:+set} TEAM_PROVIDER=${TEAM_PROVIDER} TEAM_API=${TEAM_API} TEAM_BASE_URL=${TEAM_BASE_URL} TEAM_MODEL=${TEAM_MODEL} areal.baseUrl=${AREAL_BASE_URL} bridgeUserId=${BRIDGE_USER_ID:-<empty>} lenovoKey=${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:+set}"
+log "configured TEAM_PI_CONFIG=${TEAM_PI_CONFIG:+set} TEAM_PROVIDER=${TEAM_PROVIDER} TEAM_API=${TEAM_API} TEAM_BASE_URL=${TEAM_BASE_URL} TEAM_MODEL=${TEAM_MODEL} areal.baseUrl=${AREAL_BASE_URL} bridgeUserId=${BRIDGE_USER_ID:-<empty>} braimasterKey=${LENOVO_BRAIMASTER_API_KEY:+set} lenovoKey=${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:+set}"

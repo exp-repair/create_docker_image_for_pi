@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 # Docker rebuilds /etc/hosts when a container starts, so the build-time hosts
 # line never survives. Pi runs inside the compiled coforge-computer binary and
-# does not use the Node DNS hook, so the ModelFactory name has to be here.
+# does not use the Node DNS hook, so Aimaster / ModelFactory names have to be here.
 set -euo pipefail
 
-host="${LENOVO_MODELFACTORY_HOST:-modelfactory.lenovo.com}"
-ip="${LENOVO_MODELFACTORY_IP:-10.110.158.101}"
-if [[ -n "${host}" && -n "${ip}" && -w /etc/hosts ]] && ! grep -Eq "(^|[[:space:]])${host}([[:space:]]|$)" /etc/hosts; then
-  printf '%s %s\n' "${ip}" "${host}" >> /etc/hosts
-fi
+pin_host() {
+  local host="$1"
+  local ip="$2"
+  [[ -n "${host}" && -n "${ip}" && -w /etc/hosts ]] || return 0
+  if ! grep -Eq "(^|[[:space:]])${host}([[:space:]]|$)" /etc/hosts; then
+    printf '%s %s\n' "${ip}" "${host}" >> /etc/hosts
+  fi
+}
+
+pin_host "${LENOVO_BRAIMASTER_HOST:-braimaster.lenovo.com}" "${LENOVO_BRAIMASTER_IP:-10.46.124.101}"
+pin_host "${LENOVO_MODELFACTORY_HOST:-modelfactory.lenovo.com}" "${LENOVO_MODELFACTORY_IP:-10.110.158.101}"
 
 # Image WORKDIR is /workspace. Leave it before persist may replace that path,
 # otherwise this process (and every child) hits getcwd() failures.
@@ -64,6 +70,13 @@ if [[ "${VNC_ENABLE:-1}" != "0" ]]; then
   if [[ "${VNC_WS_ENABLE:-1}" != "0" ]]; then
     /usr/local/bin/vnc-websocket.py &
   fi
+fi
+
+# After an image replace, foreground recovers bindings once; if that handshake
+# misses, the Workspace stays down. This watcher re-runs start until cloud is
+# connected again (parked Workspaces are left alone).
+if [[ "${COFORGE_WORKSPACE_WATCH:-1}" != "0" && -x /usr/local/bin/watch-computer-workspaces.sh ]]; then
+  /usr/local/bin/watch-computer-workspaces.sh >/tmp/watch-computer-workspaces.log 2>&1 &
 fi
 
 # The supervisor stays up and runs the selected program as a child, so a

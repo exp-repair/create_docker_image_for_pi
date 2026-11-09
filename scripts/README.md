@@ -32,7 +32,7 @@ Cube template/sandbox, and configuring Pi + Cursor Agent + Multica at runtime.
 | `cont-init-browser.sh` | Starts `/entrypoint-vnc.sh` and `/entrypoint-pi-web.sh` under root. |
 | `entrypoint-vnc.sh` | Starts Xvfb, openbox, Chromium with CDP `:9223`, x11vnc, and noVNC. |
 | `entrypoint-pi-web.sh` | Starts the Pi web bridge backed by `pi --mode rpc`, including WebTTY at `/term`. |
-| `configure-pi-runtime.sh` | Writes Pi `models.json` / `settings.json`, including areal and optional Lenovo ModelFactory DeepSeek. Delegates skills install to `sync-pi-skills.sh` (does not overwrite user skills). |
+| `configure-pi-runtime.sh` | Writes Pi `models.json` / `settings.json`, including areal and Lenovo dual LLM (`llm1` Brazil muse-spark + `llm2` Beijing DeepSeek). Delegates skills install to `sync-pi-skills.sh` (does not overwrite user skills). |
 | `sync-pi-skills.sh` | Persists Pi skills under `$WORKSPACE/skills` and copies them into `$PI_AGENT_DIR/skills` on start (flock + content hash + atomic replace). Image skills from `/usr/local/share/coforge/pi-skills` fill gaps only. |
 | `test_sync_pi_skills.sh` | Host-side smoke test for `sync-pi-skills.sh` (restart / delete / softlink replace / promote). |
 | `configure-cursor-runtime.sh` | Resolves `cursor-agent`, writes `/root/.cursor/runtime.env` from `CURSOR_API_KEY` / `MULTICA_CURSOR_*`. |
@@ -71,9 +71,12 @@ entrypoint, and revert CoForge cloud-gated path changes.
 
 | Variable | Meaning |
 | --- | --- |
-| `TEAM_API_KEY`, `TEAM_BASE_URL`, `TEAM_MODEL`, `TEAM_PROVIDER` | Optional Pi TEAM provider credentials/model (kept alongside DeepSeek when set). |
-| `LENOVO_DEEPSEEK_V4_FLASH_API_KEY` | **Baked into the image at build time** (from `config/pi.env`). Multica sandboxes get DeepSeek without runtime injection. Do not push the image publicly. |
-| `LENOVO_DEEPSEEK_AS_DEFAULT` | `1` (default) makes DeepSeek the Pi `defaultProvider`/`defaultModel`. |
+| `TEAM_API_KEY`, `TEAM_BASE_URL`, `TEAM_MODEL`, `TEAM_PROVIDER` | Optional Pi TEAM provider credentials/model (kept alongside Lenovo providers when set). |
+| `LENOVO_BRAIMASTER_API_KEY` | **Baked into the image at build time** (from `config/pi.env`). Default Pi provider `llm1` / model `muse-spark`. Do not push the image publicly. |
+| `LENOVO_BRAIMASTER_AS_DEFAULT` | `1` (default) makes Brazil muse-spark the Pi default. |
+| `LENOVO_BRAIMASTER_HOST`, `LENOVO_BRAIMASTER_IP` | Pins `braimaster.lenovo.com` → `10.46.124.101` in `/etc/hosts` / `--add-host` / DNS hook. |
+| `LENOVO_DEEPSEEK_V4_FLASH_API_KEY` | **Baked into the image at build time** (from `config/pi.env`). Provider `llm2` / model `DeepSeek`. |
+| `LENOVO_DEEPSEEK_AS_DEFAULT` | `0` (default) so DeepSeek does not override muse-spark. |
 | `LENOVO_MODELFACTORY_HOST`, `LENOVO_MODELFACTORY_IP` | Pins `modelfactory.lenovo.com` in `/etc/hosts` (and `docker run --add-host`) when intranet DNS is missing. |
 | `AREAL_BASE_URL` | db-bridge AReaL provider base URL. Default is `http://10.110.158.143:9100` for the current stub. |
 | `AREAL_API`, `AREAL_API_KEY` | Pi provider API type/key for AReaL bridge calls. |

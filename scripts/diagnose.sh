@@ -2,7 +2,9 @@
 set -euo pipefail
 
 IMAGE="${IMAGE:-cube-leagent-template:local}"
-DOCKER_BIN="${DOCKER_BIN:-docker}"
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "$0")" && pwd)/lib/ensure-docker.sh"
+ensure_docker
 CID="${1:-$(${DOCKER_BIN} ps -q --filter ancestor="${IMAGE}" | head -1)}"
 if [[ -z "${CID}" ]]; then
   echo "No running container for image ${IMAGE}"

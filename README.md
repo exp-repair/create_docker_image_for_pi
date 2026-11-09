@@ -49,7 +49,7 @@ cp config/coforge.env.example config/coforge.env
 | `config/environments/staging.env` | staging feed / cloud host / tag |
 | `config/environments/production.env` | production feed / cloud host / tag |
 
-`build-swarm.sh` 会按配置下载对应 feed 的 `linux-x64` Computer、校验 checksum，并用 `COFORGE_CLOUD_HOST` 检查二进制是否面向该环境。镜像内会写入 `COFORGE_RELEASE_FEED_URL`，供运行时 `activate-computer-release` 使用。入口仍是 `coforge-computer foreground`，不跑 `setup --workspace`。启动时会把用户安装的 `/opt`、home、`/workspace`、Python venv 迁到 `/root/.coforge` volume。Pi / DeepSeek / Lenovo CA 打进镜像；DeepSeek key 来自 `config/pi.env`，勿推公共仓库。staging 运维步骤见 CoForge 仓库 `docs/operations/cloud-swarm/staging-bring-up.md`。
+`build-swarm.sh` 会按配置下载对应 feed 的 `linux-x64` Computer、校验 checksum，并用 `COFORGE_CLOUD_HOST` 检查二进制是否面向该环境。镜像内会写入 `COFORGE_RELEASE_FEED_URL`，供运行时 `activate-computer-release` 使用。入口仍是 `coforge-computer foreground`，不跑 `setup --workspace`。启动时会把用户安装的 `/opt`、home、`/workspace`、Python venv 迁到 `/root/.coforge` volume。Pi 双工厂（巴西 Aimaster `llm1/muse-spark` 默认 + 北京 ModelFactory `llm2/DeepSeek`）与 Lenovo CA 打进镜像；两把 key 来自 `config/pi.env`，勿推公共仓库。staging 运维步骤见 CoForge 仓库 `docs/operations/cloud-swarm/staging-bring-up.md`；production 见同目录 `production-bring-up.md`（本机 Swarm 管理节点 `10.110.158.147`）。
 
 ## Build locally
 
@@ -185,10 +185,10 @@ curl -I https://www.google.com
 - `scripts/cube-start.sh` starts VNC/noVNC/Pi web helpers, optionally starts
   Multica when `MULTICA_AUTOSTART=1`, then execs the base lightweight Code API.
 - `scripts/configure-pi-runtime.sh` writes Pi `models.json` and `settings.json`,
-  including the `areal` db-bridge provider. When
-  `LENOVO_DEEPSEEK_V4_FLASH_API_KEY` is set it also merges Lenovo ModelFactory
-  DeepSeek, trusts the baked CA via `NODE_EXTRA_CA_CERTS`, pins
-  `modelfactory.lenovo.com` DNS, and (by default) sets DeepSeek as the Pi default.
+  including the `areal` db-bridge provider. When Brazil / Beijing keys are set it
+  merges `llm1` (Aimaster muse-spark) and `llm2` (ModelFactory DeepSeek), trusts
+  the baked CA via `NODE_EXTRA_CA_CERTS`, pins `braimaster.lenovo.com` +
+  `modelfactory.lenovo.com` DNS, and (by default) sets muse-spark as the Pi default.
 - `scripts/sync-pi-skills.sh` + `scripts/bind-pi-skills.sh`: seed image skills into
   `/workspace/skills`, then `mount --bind` that directory onto
   `/root/.pi/agent/skills` so new container-level skills persist automatically.

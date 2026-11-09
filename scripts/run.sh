@@ -2,14 +2,19 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# shellcheck disable=SC1091
+source ./scripts/lib/ensure-docker.sh
+ensure_docker
+
 IMAGE="${IMAGE:-coforge-pi:local}"
 NAME="${NAME:-coforge-pi}"
 PI_CONFIG="${PI_CONFIG:-config/pi.env}"
-DOCKER_BIN="${DOCKER_BIN:-docker}"
 HOST_PROXY_PORT="${HOST_PROXY_PORT:-7893}"
 ENABLE_SANDBOX_HOST_PROXY="${ENABLE_SANDBOX_HOST_PROXY:-0}"
 SANDBOX_PROXY_URL="${SANDBOX_PROXY_URL:-}"
 SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY:-localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}"
+LENOVO_BRAIMASTER_HOST="${LENOVO_BRAIMASTER_HOST:-braimaster.lenovo.com}"
+LENOVO_BRAIMASTER_IP="${LENOVO_BRAIMASTER_IP:-10.46.124.101}"
 LENOVO_MODELFACTORY_HOST="${LENOVO_MODELFACTORY_HOST:-modelfactory.lenovo.com}"
 LENOVO_MODELFACTORY_IP="${LENOVO_MODELFACTORY_IP:-10.110.158.101}"
 
@@ -24,18 +29,24 @@ fi
 # Host publish port for the web terminal.
 # Applied after pi.env so unset values get this default; explicit env still wins.
 PI_WEB_HOST_PORT="${PI_WEB_HOST_PORT:-26079}"
+LENOVO_BRAIMASTER_HOST="${LENOVO_BRAIMASTER_HOST:-braimaster.lenovo.com}"
+LENOVO_BRAIMASTER_IP="${LENOVO_BRAIMASTER_IP:-10.46.124.101}"
 LENOVO_MODELFACTORY_HOST="${LENOVO_MODELFACTORY_HOST:-modelfactory.lenovo.com}"
 LENOVO_MODELFACTORY_IP="${LENOVO_MODELFACTORY_IP:-10.110.158.101}"
 SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY:-localhost,127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}"
-# Keep ModelFactory off the sandbox HTTP proxy path (intranet TLS endpoint).
-case ",${SANDBOX_NO_PROXY}," in
-  *",${LENOVO_MODELFACTORY_HOST},"*) ;;
-  *) SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY},${LENOVO_MODELFACTORY_HOST}" ;;
-esac
-case ",${SANDBOX_NO_PROXY}," in
-  *",${LENOVO_MODELFACTORY_IP},"*) ;;
-  *) SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY},${LENOVO_MODELFACTORY_IP}" ;;
-esac
+# Keep Aimaster / ModelFactory off the sandbox HTTP proxy path (intranet TLS).
+append_no_proxy() {
+  local value="$1"
+  [[ -n "${value}" ]] || return 0
+  case ",${SANDBOX_NO_PROXY}," in
+    *",${value},"*) ;;
+    *) SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY},${value}" ;;
+  esac
+}
+append_no_proxy "${LENOVO_BRAIMASTER_HOST}"
+append_no_proxy "${LENOVO_BRAIMASTER_IP}"
+append_no_proxy "${LENOVO_MODELFACTORY_HOST}"
+append_no_proxy "${LENOVO_MODELFACTORY_IP}"
 if [[ -z "${SANDBOX_PROXY_URL}" && "${ENABLE_SANDBOX_HOST_PROXY}" == "1" ]]; then
   SANDBOX_PROXY_URL="http://host.docker.internal:${HOST_PROXY_PORT}"
 fi
@@ -57,7 +68,10 @@ if [[ -n "${SANDBOX_PROXY_URL}" ]]; then
   fi
 fi
 
-# Pin Lenovo ModelFactory hostname when cluster DNS is unavailable inside Docker.
+# Pin Lenovo Aimaster / ModelFactory hostnames when cluster DNS is unavailable.
+if [[ -n "${LENOVO_BRAIMASTER_HOST}" && -n "${LENOVO_BRAIMASTER_IP}" ]]; then
+  DOCKER_EXTRA_ARGS+=(--add-host="${LENOVO_BRAIMASTER_HOST}:${LENOVO_BRAIMASTER_IP}")
+fi
 if [[ -n "${LENOVO_MODELFACTORY_HOST}" && -n "${LENOVO_MODELFACTORY_IP}" ]]; then
   DOCKER_EXTRA_ARGS+=(--add-host="${LENOVO_MODELFACTORY_HOST}:${LENOVO_MODELFACTORY_IP}")
 fi
@@ -88,9 +102,16 @@ ${DOCKER_BIN} run -d --name "${NAME}" \
   ${AREAL_BASE_URL:+-e AREAL_BASE_URL="${AREAL_BASE_URL}"} \
   ${AREAL_API:+-e AREAL_API="${AREAL_API}"} \
   ${AREAL_API_KEY:+-e AREAL_API_KEY="${AREAL_API_KEY}"} \
+  ${LENOVO_BRAIMASTER_API_KEY:+-e LENOVO_BRAIMASTER_API_KEY="${LENOVO_BRAIMASTER_API_KEY}"} \
+  -e LENOVO_BRAIMASTER_AS_DEFAULT="${LENOVO_BRAIMASTER_AS_DEFAULT:-1}" \
+  -e LENOVO_BRAIMASTER_PROVIDER="${LENOVO_BRAIMASTER_PROVIDER:-llm1}" \
+  -e LENOVO_BRAIMASTER_MODEL="${LENOVO_BRAIMASTER_MODEL:-muse-spark}" \
+  -e LENOVO_BRAIMASTER_BASE_URL="${LENOVO_BRAIMASTER_BASE_URL:-https://braimaster.lenovo.com/llm/v1}" \
+  -e LENOVO_BRAIMASTER_HOST="${LENOVO_BRAIMASTER_HOST}" \
+  -e LENOVO_BRAIMASTER_IP="${LENOVO_BRAIMASTER_IP}" \
   ${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:+-e LENOVO_DEEPSEEK_V4_FLASH_API_KEY="${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}"} \
-  -e LENOVO_DEEPSEEK_AS_DEFAULT="${LENOVO_DEEPSEEK_AS_DEFAULT:-1}" \
-  -e LENOVO_DEEPSEEK_PROVIDER="${LENOVO_DEEPSEEK_PROVIDER:-openai}" \
+  -e LENOVO_DEEPSEEK_AS_DEFAULT="${LENOVO_DEEPSEEK_AS_DEFAULT:-0}" \
+  -e LENOVO_DEEPSEEK_PROVIDER="${LENOVO_DEEPSEEK_PROVIDER:-llm2}" \
   -e LENOVO_DEEPSEEK_MODEL="${LENOVO_DEEPSEEK_MODEL:-DeepSeek}" \
   -e LENOVO_DEEPSEEK_BASE_URL="${LENOVO_DEEPSEEK_BASE_URL:-https://modelfactory.lenovo.com/llm/v1}" \
   -e LENOVO_MODELFACTORY_HOST="${LENOVO_MODELFACTORY_HOST}" \

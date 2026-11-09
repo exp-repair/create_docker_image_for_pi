@@ -2,9 +2,10 @@
 # The host starts this image with no command. The entrypoint keeps the desktop
 # listeners up and runs `coforge-computer foreground` as a child. The host
 # injects the binding environment; this image does not run `setup --workspace`.
-# Pi, DeepSeek, and the Lenovo CA stay in the image. The desktop is a slim
-# XFCE session: Chromium, Thunar, and a terminal, with the CoForge mark on
-# the wallpaper. It stays down until a client connects.
+# Pi, Brazil Aimaster (muse-spark) + Beijing ModelFactory (DeepSeek), and the
+# Lenovo CA stay in the image. The desktop is a slim XFCE session: Chromium,
+# Thunar, and a terminal, with the CoForge mark on the wallpaper. It stays
+# down until a client connects.
 
 ARG SANDBOX_IMAGE=cube-sandbox-cn.tencentcloudcr.com/cube-sandbox/sandbox-code@sha256:b551b169de85c0216cce9453a8e22059ca47fd3dceced75e918cf1c8de60464b
 FROM ${SANDBOX_IMAGE}
@@ -38,12 +39,18 @@ ENV HOME=/root \
     PI_WEB_TERM_SHELL=/bin/bash \
     PI_WEB_CONSOLE=0 \
     NODE_EXTRA_CA_CERTS=/root/.pi/agent/certs/lenovo-modelfactory-ca.pem \
+    LENOVO_BRAIMASTER_HOST=braimaster.lenovo.com \
+    LENOVO_BRAIMASTER_IP=10.46.124.101 \
+    LENOVO_BRAIMASTER_PROVIDER=llm1 \
+    LENOVO_BRAIMASTER_MODEL=muse-spark \
+    LENOVO_BRAIMASTER_BASE_URL=https://braimaster.lenovo.com/llm/v1 \
+    LENOVO_BRAIMASTER_AS_DEFAULT=1 \
     LENOVO_MODELFACTORY_HOST=modelfactory.lenovo.com \
     LENOVO_MODELFACTORY_IP=10.110.158.101 \
-    LENOVO_DEEPSEEK_PROVIDER=openai \
+    LENOVO_DEEPSEEK_PROVIDER=llm2 \
     LENOVO_DEEPSEEK_MODEL=DeepSeek \
     LENOVO_DEEPSEEK_BASE_URL=https://modelfactory.lenovo.com/llm/v1 \
-    LENOVO_DEEPSEEK_AS_DEFAULT=1 \
+    LENOVO_DEEPSEEK_AS_DEFAULT=0 \
     NODE_OPTIONS=--require=/usr/local/lib/lenovo-modelfactory-dns-hook.js \
     PATH=/root/.local/bin:/root/.npm-global/bin:/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
 
@@ -163,12 +170,15 @@ LABEL org.coforge.computer.version=${COMPUTER_VERSION}
 COPY scripts/bake-pi-deepseek.sh /usr/local/bin/bake-pi-deepseek.sh
 COPY scripts/container-systemctl /usr/local/bin/systemctl
 COPY config/pi-modelfactory-provider.json /usr/local/share/coforge/pi-modelfactory-provider.json
+COPY config/pi-braimaster-provider.json /usr/local/share/coforge/pi-braimaster-provider.json
 COPY config/pi-agent/APPEND_SYSTEM.md /usr/local/share/coforge/pi-APPEND_SYSTEM.md
 COPY config/pi-agent/skills/ /usr/local/share/coforge/pi-skills/
 RUN chmod 755 /usr/local/bin/coforge-computer \
   /usr/local/bin/bake-pi-deepseek.sh \
   /usr/local/bin/systemctl \
   && chmod 644 /usr/local/share/coforge/pi-APPEND_SYSTEM.md \
+  /usr/local/share/coforge/pi-modelfactory-provider.json \
+  /usr/local/share/coforge/pi-braimaster-provider.json \
   && find /usr/local/share/coforge/pi-skills -type f -name 'SKILL.md' -exec chmod 644 {} +
 
 RUN npm config set prefix /root/.npm-global \
@@ -213,7 +223,7 @@ RUN printf '%s\n' '#!/bin/sh' 'exec /usr/local/bin/coforge-computer __agent-cli 
   && chmod 755 /usr/local/bin/coforge
 
 # Optional host snapshot of Pi agent files. Copied first so the bake step below
-# always overwrites apiKey from LENOVO_DEEPSEEK_* build-args (pi.env).
+# always overwrites apiKey from LENOVO_BRAIMASTER_* / LENOVO_DEEPSEEK_* (pi.env).
 # APPEND_SYSTEM.md and skills are always installed from share templates so Pi
 # knows it is a CoForge cloud-computer agent with browser/desktop capabilities.
 COPY config/pi-agent/ /tmp/pi-agent/
@@ -234,23 +244,44 @@ RUN mkdir -p /root/.pi/agent/certs /root/.pi/agent/skills \
     rm -rf /tmp/pi-agent
 
 # Bake after the snapshot copy so a stale config/pi-agent/models.json cannot
-# clobber the key from pi.env.
+# clobber the keys from pi.env.
+ARG LENOVO_BRAIMASTER_API_KEY
+ARG LENOVO_BRAIMASTER_PROVIDER=llm1
+ARG LENOVO_BRAIMASTER_MODEL=muse-spark
+ARG LENOVO_BRAIMASTER_MODEL_NAME=muse-spark-nvfp4
+ARG LENOVO_BRAIMASTER_BASE_URL=https://braimaster.lenovo.com/llm/v1
+ARG LENOVO_BRAIMASTER_HOST=braimaster.lenovo.com
+ARG LENOVO_BRAIMASTER_IP=10.46.124.101
+ARG LENOVO_BRAIMASTER_AS_DEFAULT=1
 ARG LENOVO_DEEPSEEK_V4_FLASH_API_KEY
-ARG LENOVO_DEEPSEEK_PROVIDER=openai
+ARG LENOVO_DEEPSEEK_PROVIDER=llm2
 ARG LENOVO_DEEPSEEK_MODEL=DeepSeek
 ARG LENOVO_DEEPSEEK_BASE_URL=https://modelfactory.lenovo.com/llm/v1
 ARG LENOVO_DEEPSEEK_MODEL_NAME=DeepSeek
+ARG LENOVO_DEEPSEEK_AS_DEFAULT=0
 RUN if [ "${INSTALL_PI}" != "1" ]; then \
-      echo "Skipping DeepSeek bake (INSTALL_PI=${INSTALL_PI})"; \
+      echo "Skipping Lenovo LLM bake (INSTALL_PI=${INSTALL_PI})"; \
+    elif [ -z "${LENOVO_BRAIMASTER_API_KEY}" ]; then \
+      echo "ERROR: LENOVO_BRAIMASTER_API_KEY build-arg is required to bake llm1/muse-spark" >&2; \
+      exit 1; \
     elif [ -z "${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}" ]; then \
-      echo "ERROR: LENOVO_DEEPSEEK_V4_FLASH_API_KEY build-arg is required to bake DeepSeek" >&2; \
+      echo "ERROR: LENOVO_DEEPSEEK_V4_FLASH_API_KEY build-arg is required to bake llm2/DeepSeek" >&2; \
       exit 1; \
     else \
+      LENOVO_BRAIMASTER_API_KEY="${LENOVO_BRAIMASTER_API_KEY}" \
+      LENOVO_BRAIMASTER_PROVIDER="${LENOVO_BRAIMASTER_PROVIDER}" \
+      LENOVO_BRAIMASTER_MODEL="${LENOVO_BRAIMASTER_MODEL}" \
+      LENOVO_BRAIMASTER_MODEL_NAME="${LENOVO_BRAIMASTER_MODEL_NAME}" \
+      LENOVO_BRAIMASTER_BASE_URL="${LENOVO_BRAIMASTER_BASE_URL}" \
+      LENOVO_BRAIMASTER_HOST="${LENOVO_BRAIMASTER_HOST}" \
+      LENOVO_BRAIMASTER_IP="${LENOVO_BRAIMASTER_IP}" \
+      LENOVO_BRAIMASTER_AS_DEFAULT="${LENOVO_BRAIMASTER_AS_DEFAULT}" \
       LENOVO_DEEPSEEK_V4_FLASH_API_KEY="${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}" \
       LENOVO_DEEPSEEK_PROVIDER="${LENOVO_DEEPSEEK_PROVIDER}" \
       LENOVO_DEEPSEEK_MODEL="${LENOVO_DEEPSEEK_MODEL}" \
       LENOVO_DEEPSEEK_BASE_URL="${LENOVO_DEEPSEEK_BASE_URL}" \
       LENOVO_DEEPSEEK_MODEL_NAME="${LENOVO_DEEPSEEK_MODEL_NAME}" \
+      LENOVO_DEEPSEEK_AS_DEFAULT="${LENOVO_DEEPSEEK_AS_DEFAULT}" \
       /usr/local/bin/bake-pi-deepseek.sh; \
       test -f /root/.pi/agent/models.json; \
       test -f /root/.pi/agent/settings.json; \
@@ -260,9 +291,12 @@ RUN if [ "${INSTALL_PI}" != "1" ]; then \
       test -f /root/.pi/agent/skills/cloud-computer-overview/SKILL.md; \
       test -f /root/.pi/agent/skills/browser-login/SKILL.md; \
       grep -q 'name: browser-login' /root/.pi/agent/skills/browser-login/SKILL.md; \
+      grep -q 'https://braimaster.lenovo.com/llm/v1' /root/.pi/agent/models.json; \
+      grep -q '"id": "muse-spark"' /root/.pi/agent/models.json; \
       grep -q 'https://modelfactory.lenovo.com/llm/v1' /root/.pi/agent/models.json; \
       grep -q '"id": "DeepSeek"' /root/.pi/agent/models.json; \
-      grep -q '"defaultModel": "DeepSeek"' /root/.pi/agent/settings.json; \
+      grep -q '"defaultProvider": "llm1"' /root/.pi/agent/settings.json; \
+      grep -q '"defaultModel": "muse-spark"' /root/.pi/agent/settings.json; \
     fi
 
 COPY scripts/persist-user-data.sh /usr/local/bin/persist-user-data.sh
@@ -271,8 +305,10 @@ COPY scripts/bind-pi-skills.sh /usr/local/bin/bind-pi-skills.sh
 COPY scripts/select-computer-binary.sh /usr/local/bin/select-computer-binary.sh
 COPY scripts/activate-computer-release.sh /usr/local/bin/activate-computer-release.sh
 COPY scripts/supervise-computer-runtime.sh /usr/local/bin/supervise-computer-runtime.sh
+COPY scripts/watch-computer-workspaces.sh /usr/local/bin/watch-computer-workspaces.sh
 COPY scripts/restart-computer-runtime.sh /usr/local/bin/restart-computer-runtime.sh
 COPY scripts/entrypoint-foreground.sh /usr/local/bin/entrypoint-foreground.sh
+
 COPY scripts/vnc-ondemand.py /usr/local/bin/vnc-ondemand.py
 COPY scripts/vnc-websocket.py /usr/local/bin/vnc-websocket.py
 COPY scripts/page-fill.py /usr/local/bin/page-fill.py
@@ -323,6 +359,7 @@ RUN mkdir -p /usr/local/lib/coforge /usr/local/share/coforge \
       /usr/local/bin/select-computer-binary.sh \
       /usr/local/bin/activate-computer-release.sh \
       /usr/local/bin/supervise-computer-runtime.sh \
+      /usr/local/bin/watch-computer-workspaces.sh \
       /usr/local/bin/restart-computer-runtime.sh \
       /usr/local/bin/entrypoint-foreground.sh \
       /usr/local/bin/vnc-ondemand.py \
@@ -385,6 +422,8 @@ RUN mkdir -p /usr/local/lib/coforge /usr/local/share/coforge \
   && test -x /usr/local/bin/select-computer-binary.sh \
   && test -x /usr/local/bin/activate-computer-release.sh \
   && test -x /usr/local/bin/supervise-computer-runtime.sh \
+  && test -x /usr/local/bin/watch-computer-workspaces.sh \
+  && grep -q 'watch-computer-workspaces.sh' /usr/local/bin/entrypoint-foreground.sh \
   && test -x /usr/local/bin/restart-computer-runtime.sh
 
 WORKDIR /workspace

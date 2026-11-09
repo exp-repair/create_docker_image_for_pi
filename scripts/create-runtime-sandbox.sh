@@ -29,25 +29,33 @@ fi
 if [[ -z "${SANDBOX_PROXY_URL}" && "${ENABLE_SANDBOX_HOST_PROXY}" == "1" ]]; then
   SANDBOX_PROXY_URL="http://${HOST_IP}:${HOST_PROXY_PORT}"
 fi
+LENOVO_BRAIMASTER_HOST="${LENOVO_BRAIMASTER_HOST:-braimaster.lenovo.com}"
+LENOVO_BRAIMASTER_IP="${LENOVO_BRAIMASTER_IP:-10.46.124.101}"
 LENOVO_MODELFACTORY_HOST="${LENOVO_MODELFACTORY_HOST:-modelfactory.lenovo.com}"
 LENOVO_MODELFACTORY_IP="${LENOVO_MODELFACTORY_IP:-10.110.158.101}"
-case ",${SANDBOX_NO_PROXY}," in
-  *",${LENOVO_MODELFACTORY_HOST},"*) ;;
-  *) SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY},${LENOVO_MODELFACTORY_HOST}" ;;
-esac
-case ",${SANDBOX_NO_PROXY}," in
-  *",${LENOVO_MODELFACTORY_IP},"*) ;;
-  *) SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY},${LENOVO_MODELFACTORY_IP}" ;;
-esac
-export SANDBOX_PROXY_URL SANDBOX_NO_PROXY LENOVO_MODELFACTORY_HOST LENOVO_MODELFACTORY_IP
+append_no_proxy() {
+  local value="$1"
+  [[ -n "${value}" ]] || return 0
+  case ",${SANDBOX_NO_PROXY}," in
+    *",${value},"*) ;;
+    *) SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY},${value}" ;;
+  esac
+}
+append_no_proxy "${LENOVO_BRAIMASTER_HOST}"
+append_no_proxy "${LENOVO_BRAIMASTER_IP}"
+append_no_proxy "${LENOVO_MODELFACTORY_HOST}"
+append_no_proxy "${LENOVO_MODELFACTORY_IP}"
+export SANDBOX_PROXY_URL SANDBOX_NO_PROXY \
+  LENOVO_BRAIMASTER_HOST LENOVO_BRAIMASTER_IP \
+  LENOVO_MODELFACTORY_HOST LENOVO_MODELFACTORY_IP
 
 required=(MULTICA_SERVER_URL MULTICA_APP_URL MULTICA_WORKSPACE_ID MULTICA_TOKEN)
 missing=()
 for key in "${required[@]}"; do
   [[ -n "${!key:-}" ]] || missing+=("${key}")
 done
-if [[ -z "${TEAM_API_KEY:-}" && -z "${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:-}" ]]; then
-  missing+=("TEAM_API_KEY|LENOVO_DEEPSEEK_V4_FLASH_API_KEY")
+if [[ -z "${TEAM_API_KEY:-}" && -z "${LENOVO_BRAIMASTER_API_KEY:-}" && -z "${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:-}" ]]; then
+  missing+=("TEAM_API_KEY|LENOVO_BRAIMASTER_API_KEY|LENOVO_DEEPSEEK_V4_FLASH_API_KEY")
 fi
 if [[ -n "${TEAM_API_KEY:-}" ]]; then
   for key in TEAM_BASE_URL TEAM_MODEL; do
@@ -99,9 +107,26 @@ runtime_env = {
         "NODE_EXTRA_CA_CERTS",
         "/root/.pi/agent/certs/lenovo-modelfactory-ca.pem",
     ),
-    "LENOVO_DEEPSEEK_AS_DEFAULT": os.environ.get("LENOVO_DEEPSEEK_AS_DEFAULT", "1"),
+    "LENOVO_BRAIMASTER_AS_DEFAULT": os.environ.get("LENOVO_BRAIMASTER_AS_DEFAULT", "1"),
+    "LENOVO_BRAIMASTER_PROVIDER": os.environ.get(
+        "LENOVO_BRAIMASTER_PROVIDER", "llm1"
+    ),
+    "LENOVO_BRAIMASTER_MODEL": os.environ.get(
+        "LENOVO_BRAIMASTER_MODEL", "muse-spark"
+    ),
+    "LENOVO_BRAIMASTER_BASE_URL": os.environ.get(
+        "LENOVO_BRAIMASTER_BASE_URL",
+        "https://braimaster.lenovo.com/llm/v1",
+    ),
+    "LENOVO_BRAIMASTER_HOST": os.environ.get(
+        "LENOVO_BRAIMASTER_HOST", "braimaster.lenovo.com"
+    ),
+    "LENOVO_BRAIMASTER_IP": os.environ.get(
+        "LENOVO_BRAIMASTER_IP", "10.46.124.101"
+    ),
+    "LENOVO_DEEPSEEK_AS_DEFAULT": os.environ.get("LENOVO_DEEPSEEK_AS_DEFAULT", "0"),
     "LENOVO_DEEPSEEK_PROVIDER": os.environ.get(
-        "LENOVO_DEEPSEEK_PROVIDER", "openai"
+        "LENOVO_DEEPSEEK_PROVIDER", "llm2"
     ),
     "LENOVO_DEEPSEEK_MODEL": os.environ.get(
         "LENOVO_DEEPSEEK_MODEL", "DeepSeek"
@@ -150,6 +175,8 @@ for optional_key in (
     "MULTICA_CURSOR_MODEL",
     "MULTICA_DAEMON_MODE",
     "MULTICA_DAEMON_SUPERVISE",
+    "LENOVO_BRAIMASTER_API_KEY",
+    "LENOVO_BRAIMASTER_MODEL_NAME",
     "LENOVO_DEEPSEEK_V4_FLASH_API_KEY",
     "LENOVO_DEEPSEEK_MODEL_NAME",
 ):

@@ -2,6 +2,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# shellcheck disable=SC1091
+source ./scripts/lib/ensure-docker.sh
+ensure_docker
+
 TAG="${TAG:-coforge-pi:local}"
 SANDBOX_IMAGE="${SANDBOX_IMAGE:-cube-sandbox-cn.tencentcloudcr.com/cube-sandbox/sandbox-code@sha256:b551b169de85c0216cce9453a8e22059ca47fd3dceced75e918cf1c8de60464b}"
 PI_CONFIG="${PI_CONFIG:-config/pi.env}"
@@ -85,6 +89,10 @@ INSTALL_PI="${INSTALL_PI:-1}"
 EXTRA+=(--build-arg "INSTALL_PI=${INSTALL_PI}")
 
 if [[ "${INSTALL_PI}" == "1" ]]; then
+  if [[ -z "${LENOVO_BRAIMASTER_API_KEY:-}" ]]; then
+    echo "[build.sh] ERROR: LENOVO_BRAIMASTER_API_KEY is required in ${PI_CONFIG} (baked into image)" >&2
+    exit 1
+  fi
   if [[ -z "${LENOVO_DEEPSEEK_V4_FLASH_API_KEY:-}" ]]; then
     echo "[build.sh] ERROR: LENOVO_DEEPSEEK_V4_FLASH_API_KEY is required in ${PI_CONFIG} (baked into image)" >&2
     exit 1
@@ -94,14 +102,23 @@ if [[ "${INSTALL_PI}" == "1" ]]; then
     --build-arg "PI_SUITE=${PI_SUITE:-npm:@lebronj/pi-suite}"
     --build-arg "PI_WORKSPACE_DIR=${PI_WORKSPACE_DIR:-/workspace}"
     --build-arg "PI_EVOLUTION_ENABLED=${PI_EVOLUTION_ENABLED:-1}"
+    --build-arg "LENOVO_BRAIMASTER_API_KEY=${LENOVO_BRAIMASTER_API_KEY}"
+    --build-arg "LENOVO_BRAIMASTER_PROVIDER=${LENOVO_BRAIMASTER_PROVIDER:-llm1}"
+    --build-arg "LENOVO_BRAIMASTER_MODEL=${LENOVO_BRAIMASTER_MODEL:-muse-spark}"
+    --build-arg "LENOVO_BRAIMASTER_MODEL_NAME=${LENOVO_BRAIMASTER_MODEL_NAME:-muse-spark-nvfp4}"
+    --build-arg "LENOVO_BRAIMASTER_BASE_URL=${LENOVO_BRAIMASTER_BASE_URL:-https://braimaster.lenovo.com/llm/v1}"
+    --build-arg "LENOVO_BRAIMASTER_HOST=${LENOVO_BRAIMASTER_HOST:-braimaster.lenovo.com}"
+    --build-arg "LENOVO_BRAIMASTER_IP=${LENOVO_BRAIMASTER_IP:-10.46.124.101}"
+    --build-arg "LENOVO_BRAIMASTER_AS_DEFAULT=${LENOVO_BRAIMASTER_AS_DEFAULT:-1}"
     --build-arg "LENOVO_DEEPSEEK_V4_FLASH_API_KEY=${LENOVO_DEEPSEEK_V4_FLASH_API_KEY}"
-    --build-arg "LENOVO_DEEPSEEK_PROVIDER=${LENOVO_DEEPSEEK_PROVIDER:-openai}"
+    --build-arg "LENOVO_DEEPSEEK_PROVIDER=${LENOVO_DEEPSEEK_PROVIDER:-llm2}"
     --build-arg "LENOVO_DEEPSEEK_MODEL=${LENOVO_DEEPSEEK_MODEL:-DeepSeek}"
     --build-arg "LENOVO_DEEPSEEK_BASE_URL=${LENOVO_DEEPSEEK_BASE_URL:-https://modelfactory.lenovo.com/llm/v1}"
     --build-arg "LENOVO_DEEPSEEK_MODEL_NAME=${LENOVO_DEEPSEEK_MODEL_NAME:-DeepSeek}"
+    --build-arg "LENOVO_DEEPSEEK_AS_DEFAULT=${LENOVO_DEEPSEEK_AS_DEFAULT:-0}"
   )
   [[ -n "${NPM_REGISTRY:-}" ]] && EXTRA+=(--build-arg "NPM_REGISTRY=${NPM_REGISTRY}")
-  echo "[build.sh] Pi install: enabled (suite ${PI_SUITE_VERSION:-0.1.17}); DeepSeek will be baked into the image"
+  echo "[build.sh] Pi install: enabled (suite ${PI_SUITE_VERSION:-0.1.17}); llm1(muse-spark)+llm2(DeepSeek) will be baked into the image"
 else
   echo "[build.sh] Pi install: skipped (INSTALL_PI=0)"
 fi
@@ -114,4 +131,4 @@ echo "[build.sh] tag=${TAG}"
 # Keep it for the release download above, and let apt use the mirror directly.
 env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u NO_PROXY \
     -u http_proxy -u https_proxy -u all_proxy -u no_proxy \
-    docker build "${EXTRA[@]}" -t "${TAG}" .
+    "${DOCKER_BIN}" build "${EXTRA[@]}" -t "${TAG}" .

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build the Swarm computer image for the configured CoForge environment.
 # Defaults come from config/coforge.env + config/environments/<env>.env.
-# DeepSeek is baked from config/pi.env. The image tag is what the host's
+# Dual LLM (Brazil muse-spark + Beijing DeepSeek) is baked from config/pi.env.
+# The image tag is what the host's
 # COFORGE_COMPUTER_IMAGE expects.
 set -euo pipefail
 cd "$(dirname "$0")/.."

@@ -5,6 +5,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# shellcheck disable=SC1091
+source ./scripts/lib/ensure-docker.sh
+ensure_docker
+
 SOURCE_IMAGE="${SOURCE_IMAGE:-cube-leagent-template:local}"
 CUBEMASTER_CLI="${CUBEMASTER_CLI:-/usr/local/services/cubetoolbox/CubeMaster/bin/cubemastercli}"
 WRITABLE_LAYER_SIZE="${WRITABLE_LAYER_SIZE:-10G}"
@@ -43,34 +47,45 @@ HOST_PROXY_PORT="${ENV_HOST_PROXY_PORT:-${HOST_PROXY_PORT:-7893}}"
 ENABLE_SANDBOX_HOST_PROXY="${ENV_ENABLE_SANDBOX_HOST_PROXY:-${ENABLE_SANDBOX_HOST_PROXY:-1}}"
 SANDBOX_PROXY_URL="${ENV_SANDBOX_PROXY_URL:-${SANDBOX_PROXY_URL:-}}"
 SANDBOX_NO_PROXY="${ENV_SANDBOX_NO_PROXY:-${SANDBOX_NO_PROXY:-localhost,127.0.0.1,::1,${HOST_IP},${CUBE_DEV_GATEWAY},10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc,.cluster.local}}"
+LENOVO_BRAIMASTER_HOST="${LENOVO_BRAIMASTER_HOST:-braimaster.lenovo.com}"
+LENOVO_BRAIMASTER_IP="${LENOVO_BRAIMASTER_IP:-10.46.124.101}"
 LENOVO_MODELFACTORY_HOST="${LENOVO_MODELFACTORY_HOST:-modelfactory.lenovo.com}"
 LENOVO_MODELFACTORY_IP="${LENOVO_MODELFACTORY_IP:-10.110.158.101}"
 
-# Always allow ModelFactory so Multica sandboxes can reach DeepSeek without extra config.
-case " ${ALLOW_OUT_CIDRS} " in
-  *" ${LENOVO_MODELFACTORY_IP}/32 "*|*" ${LENOVO_MODELFACTORY_IP} "*) ;;
-  *) ALLOW_OUT_CIDRS="${ALLOW_OUT_CIDRS} ${LENOVO_MODELFACTORY_IP}/32" ;;
-esac
-case ",${SANDBOX_NO_PROXY}," in
-  *",${LENOVO_MODELFACTORY_HOST},"*) ;;
-  *) SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY},${LENOVO_MODELFACTORY_HOST}" ;;
-esac
-case ",${SANDBOX_NO_PROXY}," in
-  *",${LENOVO_MODELFACTORY_IP},"*) ;;
-  *) SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY},${LENOVO_MODELFACTORY_IP}" ;;
-esac
+# Always allow Brazil Aimaster + Beijing ModelFactory so sandboxes reach LLMs.
+allow_out_ip() {
+  local ip="$1"
+  [[ -n "${ip}" ]] || return 0
+  case " ${ALLOW_OUT_CIDRS} " in
+    *" ${ip}/32 "*|*" ${ip} "*) ;;
+    *) ALLOW_OUT_CIDRS="${ALLOW_OUT_CIDRS} ${ip}/32" ;;
+  esac
+}
+append_no_proxy() {
+  local value="$1"
+  [[ -n "${value}" ]] || return 0
+  case ",${SANDBOX_NO_PROXY}," in
+    *",${value},"*) ;;
+    *) SANDBOX_NO_PROXY="${SANDBOX_NO_PROXY},${value}" ;;
+  esac
+}
+allow_out_ip "${LENOVO_BRAIMASTER_IP}"
+allow_out_ip "${LENOVO_MODELFACTORY_IP}"
+append_no_proxy "${LENOVO_BRAIMASTER_HOST}"
+append_no_proxy "${LENOVO_BRAIMASTER_IP}"
+append_no_proxy "${LENOVO_MODELFACTORY_HOST}"
+append_no_proxy "${LENOVO_MODELFACTORY_IP}"
 
 if [[ -z "${SANDBOX_PROXY_URL}" && "${ENABLE_SANDBOX_HOST_PROXY}" == "1" ]]; then
   SANDBOX_PROXY_URL="http://${HOST_IP}:${HOST_PROXY_PORT}"
 fi
 
-command -v docker >/dev/null 2>&1 || die "docker is required"
 [[ -x "${CUBEMASTER_CLI}" ]] || die "cubemastercli not found or not executable: ${CUBEMASTER_CLI}"
-docker image inspect "${SOURCE_IMAGE}" >/dev/null 2>&1 || die "source image not found: ${SOURCE_IMAGE}"
+"${DOCKER_BIN}" image inspect "${SOURCE_IMAGE}" >/dev/null 2>&1 || die "source image not found: ${SOURCE_IMAGE}"
 
 log "source image: ${SOURCE_IMAGE}"
 log "checking image has built-in Cube/Multica runtime helpers"
-docker run --rm --entrypoint /bin/sh "${SOURCE_IMAGE}" -lc '
+"${DOCKER_BIN}" run --rm --entrypoint /bin/sh "${SOURCE_IMAGE}" -lc '
 set -eu
 test -x /usr/local/bin/entrypoint-foreground.sh
 test -x /usr/local/bin/coforge-chromium
@@ -102,15 +117,19 @@ test -f /root/.pi/agent/skills/cloud-computer-overview/SKILL.md
 test -f /root/.pi/agent/skills/browser-login/SKILL.md
 test -f /usr/local/share/coforge/pi-skills/browser-login/SKILL.md
 grep -q "coforge-cdp-endpoint" /root/.pi/agent/skills/browser-login/SKILL.md
+grep -q "https://braimaster.lenovo.com/llm/v1" /root/.pi/agent/models.json
+grep -q '"id": "muse-spark"' /root/.pi/agent/models.json
 grep -q "https://modelfactory.lenovo.com/llm/v1" /root/.pi/agent/models.json
-grep -q '"defaultModel": "DeepSeek"' /root/.pi/agent/settings.json
+grep -q '"id": "DeepSeek"' /root/.pi/agent/models.json
+grep -q '"defaultProvider": "llm1"' /root/.pi/agent/settings.json
+grep -q '"defaultModel": "muse-spark"' /root/.pi/agent/settings.json
 command -v pi >/dev/null 2>&1 || test -x /root/.npm-global/bin/pi
 command -v cursor-agent >/dev/null 2>&1 || test -x /usr/local/bin/cursor-agent || test -x /root/.local/bin/cursor-agent
 command -v chromium >/dev/null 2>&1
 ! id user >/dev/null 2>&1
 '
 
-docker inspect "${SOURCE_IMAGE}" --format '[create-cube-template] image={{.Id}} entrypoint={{json .Config.Entrypoint}} workdir={{.Config.WorkingDir}}'
+"${DOCKER_BIN}" inspect "${SOURCE_IMAGE}" --format '[create-cube-template] image={{.Id}} entrypoint={{json .Config.Entrypoint}} workdir={{.Config.WorkingDir}}'
 
 allow_args=()
 if [[ -n "${ALLOW_OUT_CIDRS}" ]]; then
@@ -160,6 +179,8 @@ create_args=(
   --env 'PI_WEB_HOST=0.0.0.0'
   --env 'PI_WEB_PORT=6079'
   --env 'PI_WEB_WORKSPACE=/workspace'
+  --env "LENOVO_BRAIMASTER_HOST=${LENOVO_BRAIMASTER_HOST}"
+  --env "LENOVO_BRAIMASTER_IP=${LENOVO_BRAIMASTER_IP}"
   --env "LENOVO_MODELFACTORY_HOST=${LENOVO_MODELFACTORY_HOST}"
   --env "LENOVO_MODELFACTORY_IP=${LENOVO_MODELFACTORY_IP}"
   --env 'NODE_EXTRA_CA_CERTS=/root/.pi/agent/certs/lenovo-modelfactory-ca.pem'
